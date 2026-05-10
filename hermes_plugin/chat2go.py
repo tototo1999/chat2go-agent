@@ -34,6 +34,7 @@ from gateway.platforms.base import (
     MessageEvent,
     MessageType,
     SendResult,
+    cache_image_from_url,
 )
 
 logger = logging.getLogger(__name__)
@@ -263,10 +264,53 @@ class Chat2GoAdapter(BasePlatformAdapter):
             content = msg.get("content") or ""
             role = msg.get("role", "user")  # 'user' | 'expert'
             user_label = "小白" if role == "user" else "大咖"
+            attachments = msg.get("attachments") or []
+
+            # 处理图片附件：下载到 hermes 本地 cache，让 vision 工具能读
+            media_urls: list[str] = []
+            media_types: list[str] = []
+            non_image_attachments: list[tuple[str, str]] = []   # (name, url) 非图片走文本提示
+            for att in attachments:
+                if not isinstance(att, dict):
+                    continue
+                url = att.get("url") or ""
+                mime = (att.get("mime_type") or "").lower()
+                name = att.get("name") or "file"
+                if not url:
+                    continue
+                is_image = mime.startswith("image/") or any(
+                    name.lower().endswith(e)
+                    for e in (".png", ".jpg", ".jpeg", ".gif", ".webp")
+                )
+                if is_image:
+                    # 从 url 提取扩展名供 cache_image_from_url 用
+                    ext = "." + (mime.split("/", 1)[1] if "/" in mime else "jpg")
+                    if ext == "./" or ext == ".jpeg":
+                        ext = ".jpg"
+                    try:
+                        cached_path = await cache_image_from_url(url, ext=ext)
+                        media_urls.append(cached_path)
+                        media_types.append(mime or "image/jpeg")
+                        logger.info(
+                            "Chat2GO: cached image %s → %s", name, cached_path
+                        )
+                    except Exception as e:
+                        logger.warning(
+                            "Chat2GO: cache image %s 失败：%s", name, e
+                        )
+                else:
+                    non_image_attachments.append((name, url))
+
+            # 非图片附件：在 text 末尾追加 URL 提示（hermes 没有附带文档下载机制，留 URL 让 AI 决定要不要 fetch）
+            if non_image_attachments:
+                lines = ["", "【附件】"]
+                for name, url in non_image_attachments:
+                    lines.append(f"- {name}: {url}")
+                content = content + "\n".join(lines)
 
             event = MessageEvent(
                 text=content,
-                message_type=MessageType.TEXT,
+                message_type=MessageType.PHOTO if media_urls else MessageType.TEXT,
                 source=self.build_source(
                     chat_id=room_id,
                     chat_name=room.get("name") or "调试室",
@@ -276,6 +320,8 @@ class Chat2GoAdapter(BasePlatformAdapter):
                     chat_topic=room.get("industry"),
                 ),
                 message_id=str(msg_id),
+                media_urls=media_urls,
+                media_types=media_types,
                 timestamp=datetime.fromisoformat(
                     msg["created_at"].replace("Z", "+00:00")
                 ) if msg.get("created_at") else datetime.now(),
