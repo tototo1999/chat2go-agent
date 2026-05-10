@@ -6,7 +6,7 @@ import argparse
 import asyncio
 import sys
 
-from .bridge import Chat2GOBridge, cmd_set_model, cmd_set_prompt
+from .bridge import Chat2GOBridge, cmd_rooms, cmd_send, cmd_set_model, cmd_set_prompt
 from .config import (
     DEFAULT_EXPERT_EMAIL,
     DEFAULT_EXPERT_PASSWORD,
@@ -43,6 +43,20 @@ def main() -> None:
     p_model.add_argument("--email")
     p_model.add_argument("--password")
 
+    p_rooms = sub.add_parser("rooms", help="列出当前大咖的所有调试室")
+    p_rooms.add_argument("--email")
+    p_rooms.add_argument("--password")
+
+    p_send = sub.add_parser("send", help="以大咖身份往房间发消息（可被 hermes / shell 调用）")
+    p_send.add_argument("room", help="房间 id（前缀也行）或 name")
+    p_send.add_argument("content", help="消息内容")
+    p_send.add_argument("--silent", action="store_true",
+                        help="以 AI 身份发，bridge 不再触发 AI 回复（避免循环）")
+    p_send.add_argument("--role", choices=["expert", "ai", "user"], default="expert",
+                        help="发言角色（默认 expert）。--silent 等价于 --role ai")
+    p_send.add_argument("--email")
+    p_send.add_argument("--password")
+
     args = parser.parse_args()
 
     email = args.email or DEFAULT_EXPERT_EMAIL
@@ -53,6 +67,13 @@ def main() -> None:
         return
     if args.cmd == "set-model":
         asyncio.run(cmd_set_model(args.room_id, args.model, email, password))
+        return
+    if args.cmd == "rooms":
+        asyncio.run(cmd_rooms(email, password))
+        return
+    if args.cmd == "send":
+        asyncio.run(cmd_send(args.room, args.content, email, password,
+                             role=args.role, silent=args.silent))
         return
 
     if not creds.configured_providers():

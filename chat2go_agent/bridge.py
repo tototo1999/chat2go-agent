@@ -424,3 +424,81 @@ async def cmd_set_model(room_id: str, model: str, email: str, password: str) -> 
         model = f"anthropic/{model}"
     await sb.table("rooms").update({"model": model}).eq("id", room_id).execute()
     print(f"[bridge] room {room_id[:8]}… model 已更新为 {model}。")
+
+
+async def _resolve_room(sb, expert_id: str, ref: str) -> dict | None:
+    """ref 可以是 room id（前缀也行）或 name。返回 room 行 or None。"""
+    rooms = (await sb.table("rooms").select("*").eq("expert_id", expert_id).execute()).data or []
+    ref_l = ref.strip().lower()
+    # 先按 id 全匹配
+    for r in rooms:
+        if r["id"].lower() == ref_l:
+            return r
+    # 按 id 前缀（>= 4 位）
+    if len(ref_l) >= 4:
+        prefix_matches = [r for r in rooms if r["id"].lower().startswith(ref_l)]
+        if len(prefix_matches) == 1:
+            return prefix_matches[0]
+    # 按 name 完全匹配
+    for r in rooms:
+        if (r.get("name") or "").lower() == ref_l:
+            return r
+    # 按 name 前缀
+    name_matches = [r for r in rooms if (r.get("name") or "").lower().startswith(ref_l)]
+    if len(name_matches) == 1:
+        return name_matches[0]
+    return None
+
+
+async def cmd_rooms(email: str, password: str) -> None:
+    """列出当前大咖的所有调试室。"""
+    sb = await _login_for_admin(email, password)
+    expert_id = (await sb.auth.get_user()).user.id
+    rooms = (await sb.table("rooms").select("id,name,industry,brain,model,created_at")
+             .eq("expert_id", expert_id)
+             .order("created_at", desc=True)
+             .execute()).data or []
+    if not rooms:
+        print("(无调试室)")
+        return
+    print(f"{'id':<10} {'name':<20} {'industry':<10} {'brain':<10} {'model':<35} created_at")
+    for r in rooms:
+        print(
+            f"{r['id'][:8]:<10} "
+            f"{(r.get('name') or '')[:18]:<20} "
+            f"{(r.get('industry') or '-'):<10} "
+            f"{(r.get('brain') or '-'):<10} "
+            f"{(r.get('model') or '-')[:33]:<35} "
+            f"{r['created_at'][:19]}"
+        )
+
+
+async def cmd_send(room_ref: str, content: str, email: str, password: str,
+                   role: str = "expert", silent: bool = False) -> None:
+    """
+    以大咖身份往房间发消息。
+
+    role='expert'（默认）：bridge 会响应，AI 给小白回复
+    role='ai'：直接以 AI 身份发，bridge 不会再触发回复（仅供脚本/skill 使用）
+    silent=True 等价于 role='ai'（一个直观别名）
+    """
+    sb = await _login_for_admin(email, password)
+    expert_id = (await sb.auth.get_user()).user.id
+    room = await _resolve_room(sb, expert_id, room_ref)
+    if room is None:
+        print(f"[bridge] 找不到房间 {room_ref!r}（试 chat2go-agent rooms 列出全部）")
+        return
+    if silent:
+        role = "ai"
+    r = await sb.table("messages").insert({
+        "room_id": room["id"],
+        "user_id": expert_id,
+        "role": role,
+        "type": "text",
+        "content": content,
+    }).execute()
+    msg_id = (r.data or [{}])[0].get("id", "?")
+    print(f"[bridge] 已发到「{room['name']}」({room['id'][:8]}…) "
+          f"role={role} id={msg_id[:8]}…")
+    if role == "expert":
+        print("[bridge] 注意：bridge 会把这条当作大咖发言，触发 AI 回复（如不希望，加 --silent）")
