@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>ai.chat2go.bridge</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>/Users/dami2026/chat2go-agent/start.sh</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>/Users/dami2026/chat2go-agent</string>
+
+    <!-- 登录后自动启动 -->
+    <key>RunAtLoad</key>
+    <true/>
+
+    <!-- 崩溃自动重启（除非正常退出） -->
+    <key>KeepAlive</key>
+    <dict>
+        <key>SuccessfulExit</key>
+        <false/>
+    </dict>
+
+    <!-- 重启间隔，避免频繁崩溃打死 CPU -->
+    <key>ThrottleInterval</key>
+    <integer>10</integer>
+
+    <!-- PATH（macOS launchd 默认 PATH 很窄，加上 Homebrew 路径） -->
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+        <!-- 禁用 Python stdout buffer，日志即时刷出 -->
+        <key>PYTHONUNBUFFERED</key>
+        <string>1</string>
+    </dict>
+
+    <!-- 日志 -->
+    <key>StandardOutPath</key>
+    <string>/Users/dami2026/chat2go-agent/logs/bridge.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>/Users/dami2026/chat2go-agent/logs/bridge.error.log</string>
+</dict>
+</plist>
