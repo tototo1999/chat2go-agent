@@ -33,7 +33,7 @@ index 67ebf734..69864b9c 100644
      idle_minutes = os.getenv("SESSION_IDLE_MINUTES")
      if idle_minutes:
 diff --git a/gateway/run.py b/gateway/run.py
-index a024649c..b2da2298 100644
+index a024649c..7d128935 100644
 --- a/gateway/run.py
 +++ b/gateway/run.py
 @@ -2887,6 +2887,12 @@ class GatewayRunner:
@@ -49,6 +49,22 @@ index a024649c..b2da2298 100644
  
          return None
  
+@@ -2930,6 +2936,7 @@ class GatewayRunner:
+             Platform.WEIXIN: "WEIXIN_ALLOWED_USERS",
+             Platform.BLUEBUBBLES: "BLUEBUBBLES_ALLOWED_USERS",
+             Platform.QQBOT: "QQ_ALLOWED_USERS",
++            Platform.CHAT2GO: "CHAT2GO_ALLOWED_USERS",
+         }
+         platform_group_env_map = {
+             Platform.QQBOT: "QQ_GROUP_ALLOWED_USERS",
+@@ -2951,6 +2958,7 @@ class GatewayRunner:
+             Platform.WEIXIN: "WEIXIN_ALLOW_ALL_USERS",
+             Platform.BLUEBUBBLES: "BLUEBUBBLES_ALLOW_ALL_USERS",
+             Platform.QQBOT: "QQ_ALLOW_ALL_USERS",
++            Platform.CHAT2GO: "CHAT2GO_ALLOW_ALL_USERS",
+         }
+ 
+         # Per-platform allow-all flag (e.g., DISCORD_ALLOW_ALL_USERS=true)
 diff --git a/hermes_cli/gateway.py b/hermes_cli/gateway.py
 index 8b360087..4846d239 100644
 --- a/hermes_cli/gateway.py
@@ -75,4 +91,42 @@ index 8b360087..4846d239 100644
 +    },
  ]
  
+ 
+diff --git a/hermes_cli/platforms.py b/hermes_cli/platforms.py
+index 1fc3a3a8..4517d6b5 100644
+--- a/hermes_cli/platforms.py
++++ b/hermes_cli/platforms.py
+@@ -36,6 +36,7 @@ PLATFORMS: OrderedDict[str, PlatformInfo] = OrderedDict([
+     ("wecom_callback", PlatformInfo(label="💬 WeCom Callback",  default_toolset="hermes-wecom-callback")),
+     ("weixin",         PlatformInfo(label="💬 Weixin",          default_toolset="hermes-weixin")),
+     ("qqbot",          PlatformInfo(label="💬 QQBot",           default_toolset="hermes-qqbot")),
++    ("chat2go",        PlatformInfo(label="🎯 Chat2GO",         default_toolset="hermes-chat2go")),
+     ("webhook",        PlatformInfo(label="🔗 Webhook",         default_toolset="hermes-webhook")),
+     ("api_server",     PlatformInfo(label="🌐 API Server",      default_toolset="hermes-api-server")),
+ ])
+diff --git a/toolsets.py b/toolsets.py
+index f1dc7fca..52c2ed19 100644
+--- a/toolsets.py
++++ b/toolsets.py
+@@ -383,6 +383,12 @@ TOOLSETS = {
+         "includes": []
+     },
+ 
++    "hermes-chat2go": {
++        "description": "Chat2GO toolset - 大咖 marketplace（与 chat2go.cn 网页交互）",
++        "tools": _HERMES_CORE_TOOLS,
++        "includes": []
++    },
++
+     "hermes-wecom": {
+         "description": "WeCom bot toolset - enterprise WeChat messaging (full access)",
+         "tools": _HERMES_CORE_TOOLS,
+@@ -410,7 +416,7 @@ TOOLSETS = {
+     "hermes-gateway": {
+         "description": "Gateway toolset - union of all messaging platform tools",
+         "tools": [],
+-        "includes": ["hermes-telegram", "hermes-discord", "hermes-whatsapp", "hermes-slack", "hermes-signal", "hermes-bluebubbles", "hermes-homeassistant", "hermes-email", "hermes-sms", "hermes-mattermost", "hermes-matrix", "hermes-dingtalk", "hermes-feishu", "hermes-wecom", "hermes-wecom-callback", "hermes-weixin", "hermes-qqbot", "hermes-webhook"]
++        "includes": ["hermes-telegram", "hermes-discord", "hermes-whatsapp", "hermes-slack", "hermes-signal", "hermes-bluebubbles", "hermes-homeassistant", "hermes-email", "hermes-sms", "hermes-mattermost", "hermes-matrix", "hermes-dingtalk", "hermes-feishu", "hermes-wecom", "hermes-wecom-callback", "hermes-weixin", "hermes-qqbot", "hermes-chat2go", "hermes-webhook"]
+     }
+ }
  
