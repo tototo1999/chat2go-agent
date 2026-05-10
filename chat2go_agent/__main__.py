@@ -6,7 +6,15 @@ import argparse
 import asyncio
 import sys
 
-from .bridge import Chat2GOBridge, cmd_rooms, cmd_send, cmd_set_model, cmd_set_prompt
+from .bridge import (
+    Chat2GOBridge,
+    cmd_connect,
+    cmd_rooms,
+    cmd_send,
+    cmd_set_model,
+    cmd_set_prompt,
+    cmd_whoami,
+)
 from .config import (
     DEFAULT_EXPERT_EMAIL,
     DEFAULT_EXPERT_PASSWORD,
@@ -57,6 +65,12 @@ def main() -> None:
     p_send.add_argument("--email")
     p_send.add_argument("--password")
 
+    p_connect = sub.add_parser("connect",
+                               help="用 connection_key 接通 chat2go（写入 ~/.chat2go/credentials.yaml）")
+    p_connect.add_argument("key", help="c2g-key_xxx（在 chat2go.cn 网页生成）")
+
+    p_whoami = sub.add_parser("whoami", help="显示当前 agent 连接的大咖身份")
+
     args = parser.parse_args()
 
     email = args.email or DEFAULT_EXPERT_EMAIL
@@ -74,6 +88,12 @@ def main() -> None:
     if args.cmd == "send":
         asyncio.run(cmd_send(args.room, args.content, email, password,
                              role=args.role, silent=args.silent))
+        return
+    if args.cmd == "connect":
+        asyncio.run(cmd_connect(args.key))
+        return
+    if args.cmd == "whoami":
+        asyncio.run(cmd_whoami(email, password, creds=creds))
         return
 
     if not creds.configured_providers():

@@ -40,6 +40,7 @@ from supabase import AsyncClient, acreate_client
 
 from .adapters import split_model
 from .attachments import extract_attachment_text, split_image_and_text_attachments
+from .auth import fetch_otp, login_with_connection_key
 from .brains import BrainContext, build_brain, find_hermes_bin, resolve_brain_name
 from .config import (
     DEFAULT_EXPERT_EMAIL,
@@ -114,6 +115,20 @@ class Chat2GOBridge:
 
     async def login(self):
         self.sb = await acreate_client(SUPABASE_URL, SUPABASE_ANON_KEY)
+
+        # 优先用 connection_key 换 magiclink session（正式大咖路径）
+        if self.creds.connection_key:
+            try:
+                info = await login_with_connection_key(self.sb, self.creds.connection_key)
+                self.expert_id = info["expert_id"]
+                print(f"[bridge] 已通过 connection_key 登录："
+                      f"{info['email']} (id={self.expert_id[:8]}…)")
+                return
+            except Exception as e:
+                print(f"[bridge] connection_key 登录失败：{e}")
+                print(f"[bridge] 退回 email/password 路径…")
+
+        # 退路：email/password（dev / 老配置兼容）
         resp = await self.sb.auth.sign_in_with_password(
             {"email": self.email, "password": self.password}
         )
@@ -471,6 +486,66 @@ async def cmd_rooms(email: str, password: str) -> None:
             f"{(r.get('model') or '-')[:33]:<35} "
             f"{r['created_at'][:19]}"
         )
+
+
+async def cmd_connect(connection_key: str) -> None:
+    """
+    验证 connection_key 并写入 ~/.chat2go/credentials.yaml。
+    """
+    import yaml as _yaml
+    from .config import CHAT2GO_HOME
+
+    print(f"[connect] 验证 key …")
+    try:
+        otp = await fetch_otp(connection_key)
+    except Exception as e:
+        print(f"[connect] ❌ 验证失败：{e}")
+        return
+
+    print(f"[connect] ✅ 验证成功！")
+    print(f"[connect]    email：{otp['email']}")
+    print(f"[connect]    expert_id：{otp['expert_id'][:8]}…")
+
+    # 写入 yaml（合并已有内容）
+    CHAT2GO_HOME.mkdir(parents=True, exist_ok=True)
+    yaml_file = CHAT2GO_HOME / "credentials.yaml"
+    data = {}
+    if yaml_file.exists():
+        try:
+            data = _yaml.safe_load(yaml_file.read_text(encoding="utf-8")) or {}
+        except _yaml.YAMLError:
+            print(f"[connect] ⚠️  现有 yaml 解析失败，会覆盖")
+
+    data.setdefault("chat2go", {})
+    data["chat2go"]["connection_key"] = connection_key
+
+    yaml_file.write_text(
+        _yaml.safe_dump(data, allow_unicode=True, sort_keys=False),
+        encoding="utf-8",
+    )
+    print(f"[connect] 已写入 {yaml_file}")
+    print(f"[connect] 下一步：启动 bridge → chat2go-agent（或 launchctl load ...）")
+
+
+async def cmd_whoami(email: str, password: str, creds=None) -> None:
+    """显示当前 chat2go-agent 用谁的身份连接。"""
+    if creds and creds.connection_key:
+        sb = await acreate_client(SUPABASE_URL, SUPABASE_ANON_KEY)
+        try:
+            info = await login_with_connection_key(sb, creds.connection_key)
+            print(f"[whoami] 模式：connection_key")
+            print(f"[whoami] email：{info['email']}")
+            print(f"[whoami] expert_id：{info['expert_id']}")
+            r = await sb.table("profiles").select("role,display_name").eq(
+                "user_id", info["expert_id"]).maybe_single().execute()
+            if r.data:
+                print(f"[whoami] role：{r.data.get('role')}")
+                print(f"[whoami] 名字：{r.data.get('display_name')}")
+        except Exception as e:
+            print(f"[whoami] connection_key 验证失败：{e}")
+        return
+    print(f"[whoami] 模式：email/password")
+    print(f"[whoami] email：{email}")
 
 
 async def cmd_send(room_ref: str, content: str, email: str, password: str,

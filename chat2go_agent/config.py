@@ -17,9 +17,12 @@ SUPABASE_ANON_KEY = (
     ".GpMUVTk6JvqeciXagXQiJunc8TLFMHg3_b9reIjJ2Y8"
 )
 
-# Demo 默认大咖账号
+# Demo 默认大咖账号（向后兼容；正式大咖应该用 connection_key）
 DEFAULT_EXPERT_EMAIL = "lirui88888862@gmail.com"
 DEFAULT_EXPERT_PASSWORD = "123456"
+
+# Edge Function URL（用 connection_key 换 JWT）
+AGENT_AUTH_URL = SUPABASE_URL + "/functions/v1/agent-auth/exchange"
 
 # 用户配置目录
 CHAT2GO_HOME = Path(os.environ.get("CHAT2GO_HOME") or Path.home() / ".chat2go")
@@ -70,6 +73,8 @@ class Credentials:
     default_exchange_rate: float = 7.20
     # 默认 brain：'auto' | 'builtin' | 'hermes'
     default_brain: str = "auto"
+    # 大咖 connection key（c2g-key_xxx），优先级高于 email/password
+    connection_key: str = ""
 
     def get(self, provider: str) -> ProviderCreds | None:
         creds = self.providers.get(provider)
@@ -128,6 +133,17 @@ def load_credentials() -> Credentials:
         creds.default_exchange_rate = float(r)
     if (b := defaults.get("brain")) is not None:
         creds.default_brain = str(b).strip().lower()
+
+    # chat2go connection key（环境变量 > yaml）
+    chat2go_block = yaml_data.get("chat2go", {}) or {}
+    creds.connection_key = (
+        os.environ.get("CHAT2GO_KEY")
+        or chat2go_block.get("connection_key")
+        or ""
+    ).strip()
+    # 过滤 example placeholder
+    if creds.connection_key == "c2g-key_xxx" or creds.connection_key.endswith("_a1b2c3..."):
+        creds.connection_key = ""
 
     for provider, env_key in ENV_KEY_MAP.items():
         yaml_block = yaml_data.get(provider, {}) or {}
