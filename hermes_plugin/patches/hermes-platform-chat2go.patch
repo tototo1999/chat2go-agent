@@ -1,0 +1,78 @@
+diff --git a/gateway/config.py b/gateway/config.py
+index 67ebf734..69864b9c 100644
+--- a/gateway/config.py
++++ b/gateway/config.py
+@@ -67,6 +67,7 @@ class Platform(Enum):
+     WEIXIN = "weixin"
+     BLUEBUBBLES = "bluebubbles"
+     QQBOT = "qqbot"
++    CHAT2GO = "chat2go"          # ★ 增加 chat2go 大咖营业窗口
+ 
+ 
+ @dataclass
+@@ -1271,6 +1272,21 @@ def _apply_env_overrides(config: GatewayConfig) -> None:
+                 name=os.getenv("QQBOT_HOME_CHANNEL_NAME") or os.getenv(qq_home_name_env, "Home"),
+             )
+ 
++    # Chat2GO （大咖营业窗口，token = chat2go.cn 网页生成的 c2g-key_xxx）
++    chat2go_token = os.getenv("CHAT2GO_TOKEN")
++    if chat2go_token:
++        if Platform.CHAT2GO not in config.platforms:
++            config.platforms[Platform.CHAT2GO] = PlatformConfig()
++        config.platforms[Platform.CHAT2GO].enabled = True
++        config.platforms[Platform.CHAT2GO].token = chat2go_token
++        # 可选：覆盖默认 Supabase 端点（一般不用改）
++        c2g_url = os.getenv("CHAT2GO_SUPABASE_URL")
++        if c2g_url:
++            config.platforms[Platform.CHAT2GO].extra["supabase_url"] = c2g_url
++        c2g_anon = os.getenv("CHAT2GO_SUPABASE_ANON_KEY")
++        if c2g_anon:
++            config.platforms[Platform.CHAT2GO].extra["supabase_anon_key"] = c2g_anon
++
+     # Session settings
+     idle_minutes = os.getenv("SESSION_IDLE_MINUTES")
+     if idle_minutes:
+diff --git a/gateway/run.py b/gateway/run.py
+index a024649c..b2da2298 100644
+--- a/gateway/run.py
++++ b/gateway/run.py
+@@ -2887,6 +2887,12 @@ class GatewayRunner:
+                 logger.warning("QQBot: aiohttp/httpx missing or QQ_APP_ID/QQ_CLIENT_SECRET not configured")
+                 return None
+             return QQAdapter(config)
++        elif platform == Platform.CHAT2GO:
++            from gateway.platforms.chat2go import Chat2GoAdapter, check_chat2go_requirements
++            if not check_chat2go_requirements():
++                logger.warning("Chat2GO: supabase-py missing (pip install supabase)")
++                return None
++            return Chat2GoAdapter(config)
+ 
+         return None
+ 
+diff --git a/hermes_cli/gateway.py b/hermes_cli/gateway.py
+index 8b360087..86007c7d 100644
+--- a/hermes_cli/gateway.py
++++ b/hermes_cli/gateway.py
+@@ -2521,6 +2521,22 @@ _PLATFORMS = [
+              "help": "OpenID to deliver cron results and notifications to."},
+         ],
+     },
++    {
++        "key": "chat2go",
++        "label": "Chat2GO（大咖营业窗口）",
++        "emoji": "🎯",
++        "token_var": "CHAT2GO_TOKEN",
++        "setup_instructions": [
++            "1. 打开 https://chat2go.cn 注册一个大咖账号（选「行业大咖 · 入驻赚收益」）",
++            "2. 进入引导页 → 点「生成我的连接密钥」→ 复制 c2g-key_xxx",
++            "3. 粘贴到下面的 Connection Key",
++            "4. hermes 启动后会自动连 chat2go.cn 监听小白消息",
++        ],
++        "vars": [
++            {"name": "CHAT2GO_TOKEN", "prompt": "Connection Key (c2g-key_xxx)", "password": True,
++             "help": "在 chat2go.cn 大咖设置页 → Agent 连接密钥 → 生成新密钥（一次性显示）。"},
++        ],
++    },
+ ]
+ 
+ 
