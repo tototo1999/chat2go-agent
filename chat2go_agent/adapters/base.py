@@ -19,6 +19,19 @@ class Message:
     images: list[ImageRef] = field(default_factory=list)
 
 
+@dataclass
+class Usage:
+    input_tokens: int = 0
+    output_tokens: int = 0
+
+
+@dataclass
+class Result:
+    """所有 adapter 的统一返回。"""
+    text: str
+    usage: Usage
+
+
 class ModelAdapter(Protocol):
     """所有 provider adapter 的统一接口。"""
 
@@ -31,6 +44,6 @@ class ModelAdapter(Protocol):
         model: str,
         max_tokens: int = 2048,
         timeout: int = 120,
-    ) -> str:
-        """同步式调用：吃 messages 吐文本。Phase A 不做流式，不做 tool_use。"""
+    ) -> Result:
+        """同步式调用：吃 messages 吐文本 + token 用量。Phase A 不做流式 / tool_use。"""
         ...

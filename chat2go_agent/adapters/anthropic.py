@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import httpx
 
-from .base import Message, ImageRef
+from .base import ImageRef, Message, Result, Usage
 
 
 class AnthropicAdapter:
@@ -21,7 +21,7 @@ class AnthropicAdapter:
         model: str,
         max_tokens: int = 2048,
         timeout: int = 120,
-    ) -> str:
+    ) -> Result:
         if not self.api_key:
             raise RuntimeError("Anthropic API key 未配置")
 
@@ -58,7 +58,13 @@ class AnthropicAdapter:
         data = resp.json()
         # 多个 content block 时，把所有 text block 拼起来
         parts = [b.get("text", "") for b in data.get("content", []) if b.get("type") == "text"]
-        return "".join(parts).strip()
+        text = "".join(parts).strip()
+        u = data.get("usage", {}) or {}
+        usage = Usage(
+            input_tokens=int(u.get("input_tokens", 0) or 0),
+            output_tokens=int(u.get("output_tokens", 0) or 0),
+        )
+        return Result(text=text, usage=usage)
 
 
 def _build_anthropic_content(m: Message) -> list[dict] | str:

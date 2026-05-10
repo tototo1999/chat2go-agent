@@ -1,16 +1,17 @@
-"""OpenAI 协议兼容 adapter —— OpenAI / DeepSeek / Qwen / Kimi / GLM 共用。"""
+"""OpenAI 协议兼容 adapter —— OpenAI / DeepSeek / Qwen / Kimi / GLM / 本地（Ollama 等）共用。"""
 
 from __future__ import annotations
 
 import httpx
 
-from .base import Message
+from .base import Message, Result, Usage
 
 
 class OpenAICompatibleAdapter:
     """
     一个 adapter 覆盖所有 OpenAI 协议兼容厂商。
     通过 base_url + api_key 区分不同 provider。
+    本地模型（如 Ollama）允许空 api_key。
     """
 
     def __init__(self, provider: str, api_key: str, base_url: str):
@@ -25,8 +26,9 @@ class OpenAICompatibleAdapter:
         model: str,
         max_tokens: int = 2048,
         timeout: int = 120,
-    ) -> str:
-        if not self.api_key:
+    ) -> Result:
+        # local provider（Ollama 等）不要求 api_key
+        if not self.api_key and self.provider != "local":
             raise RuntimeError(f"{self.provider} API key 未配置")
         if not self.base_url:
             raise RuntimeError(f"{self.provider} base_url 未配置")
@@ -44,13 +46,14 @@ class OpenAICompatibleAdapter:
             "max_tokens": max_tokens,
         }
 
+        headers: dict[str, str] = {"content-type": "application/json"}
+        if self.api_key:
+            headers["Authorization"] = f"Bearer {self.api_key}"
+
         async with httpx.AsyncClient(timeout=timeout) as client:
             resp = await client.post(
                 f"{self.base_url}/chat/completions",
-                headers={
-                    "Authorization": f"Bearer {self.api_key}",
-                    "content-type": "application/json",
-                },
+                headers=headers,
                 json=payload,
             )
 
@@ -61,7 +64,13 @@ class OpenAICompatibleAdapter:
         choices = data.get("choices") or []
         if not choices:
             raise RuntimeError(f"{self.provider} 返回空 choices: {data}")
-        return (choices[0].get("message", {}).get("content") or "").strip()
+        text = (choices[0].get("message", {}).get("content") or "").strip()
+        u = data.get("usage") or {}
+        usage = Usage(
+            input_tokens=int(u.get("prompt_tokens", 0) or 0),
+            output_tokens=int(u.get("completion_tokens", 0) or 0),
+        )
+        return Result(text=text, usage=usage)
 
 
 def _build_openai_content(m: Message):

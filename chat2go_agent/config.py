@@ -44,6 +44,7 @@ DEFAULT_BASE_URLS = {
     "kimi": "https://api.moonshot.cn/v1",
     "glm": "https://open.bigmodel.cn/api/paas/v4",
     "openrouter": "https://openrouter.ai/api/v1",
+    "local": "http://localhost:11434/v1",  # Ollama 默认
 }
 
 
@@ -61,13 +62,24 @@ class ProviderCreds:
 class Credentials:
     providers: dict[str, ProviderCreds] = field(default_factory=dict)
     default_model: str = "anthropic/claude-sonnet-4-5"
+    # 本地模型成本：name → (input_per_mtok, output_per_mtok)，USD
+    local_prices: dict[str, tuple[float, float]] = field(default_factory=dict)
+    # 大咖默认佣金率（房间没设时用）
+    default_commission_pct: float = 0.15
+    # USD → CNY 默认汇率
+    default_exchange_rate: float = 7.20
 
     def get(self, provider: str) -> ProviderCreds | None:
         creds = self.providers.get(provider)
         return creds if creds and creds.configured else None
 
     def configured_providers(self) -> list[str]:
-        return [name for name, c in self.providers.items() if c.configured]
+        # local 没 api_key 也算配置好（只要 base_url + 至少一个模型）
+        out = [name for name, c in self.providers.items() if c.configured]
+        local = self.providers.get("local")
+        if local and local.base_url and self.local_prices and "local" not in out:
+            out.append("local")
+        return out
 
 
 def load_dotenv(path: Path | None = None) -> None:
@@ -106,10 +118,12 @@ def load_credentials() -> Credentials:
             print(f"[config] 解析 {yaml_file} 失败：{e}")
 
     creds = Credentials()
-    creds.default_model = (
-        yaml_data.get("defaults", {}).get("model")
-        or creds.default_model
-    )
+    defaults = yaml_data.get("defaults", {}) or {}
+    creds.default_model = defaults.get("model") or creds.default_model
+    if (c := defaults.get("commission_pct")) is not None:
+        creds.default_commission_pct = float(c)
+    if (r := defaults.get("exchange_rate")) is not None:
+        creds.default_exchange_rate = float(r)
 
     for provider, env_key in ENV_KEY_MAP.items():
         yaml_block = yaml_data.get(provider, {}) or {}
@@ -121,5 +135,18 @@ def load_credentials() -> Credentials:
         if api_key and api_key.startswith("sk-xxx"):  # example placeholder
             api_key = ""
         creds.providers[provider] = ProviderCreds(api_key=api_key.strip(), base_url=base_url)
+
+    # 本地模型（Ollama 等，OpenAI 兼容协议，但成本由大咖自报）
+    local_block = yaml_data.get("local", {}) or {}
+    creds.providers["local"] = ProviderCreds(
+        api_key=local_block.get("api_key", "") or "",  # 通常空
+        base_url=local_block.get("base_url") or DEFAULT_BASE_URLS["local"],
+    )
+    for name, rates in (local_block.get("models") or {}).items():
+        rates = rates or {}
+        creds.local_prices[name] = (
+            float(rates.get("input_per_mtok", 0) or 0),
+            float(rates.get("output_per_mtok", 0) or 0),
+        )
 
     return creds

@@ -48,6 +48,7 @@ from .config import (
     Credentials,
 )
 from .memory import prefetch_memory
+from .pricing import calculate_charge
 from .prompt_builder import build_messages, build_system_prompt
 from .soul import Skill, load_skills, load_soul, select_skill_by_industry
 
@@ -195,13 +196,13 @@ class Chat2GOBridge:
             )
 
             # 4. dispatch
-            ai_text = await dispatch_call(
+            result = await dispatch_call(
                 self.adapters,
                 model=model,
                 system=system,
                 messages=messages,
             )
-            ai_text = _normalize_markdown(ai_text)
+            ai_text = _normalize_markdown(result.text)
             if not ai_text:
                 ai_text = f"（{provider} 返回空回复）"
 
@@ -210,8 +211,8 @@ class Chat2GOBridge:
                 f"{ai_text[:80]}{'…' if len(ai_text) > 80 else ''}"
             )
 
-            # 5. 写回
-            await self.sb.table("messages").insert(
+            # 5. 写回 AI 消息
+            ai_resp = await self.sb.table("messages").insert(
                 {
                     "room_id": room_id,
                     "user_id": self.expert_id,
@@ -220,6 +221,47 @@ class Chat2GOBridge:
                     "content": ai_text,
                 }
             ).execute()
+
+            # 6. 写 model_usage（计费观测）
+            try:
+                ai_msg_id = (ai_resp.data or [{}])[0].get("id")
+                commission = float(
+                    room.get("commission_pct") or self.creds.default_commission_pct
+                )
+                rate = float(
+                    room.get("exchange_rate_to_cny") or self.creds.default_exchange_rate
+                )
+                charge = calculate_charge(
+                    model=model,
+                    usage=result.usage,
+                    commission_pct=commission,
+                    exchange_rate=rate,
+                    local_prices=self.creds.local_prices,
+                )
+                await self.sb.table("model_usage").insert(
+                    {
+                        "message_id": ai_msg_id,
+                        "room_id": room_id,
+                        "expert_id": self.expert_id,
+                        "triggered_by": sender_user_id,
+                        "model": model,
+                        "input_tokens": result.usage.input_tokens,
+                        "output_tokens": result.usage.output_tokens,
+                        "cost_source": charge.cost_source,
+                        "cost_usd": round(charge.cost_usd, 6),
+                        "commission_pct": commission,
+                        "exchange_rate": rate,
+                        "user_charge_cny": round(charge.user_charge_cny, 4),
+                    }
+                ).execute()
+                print(
+                    f"[bridge] usage: in={result.usage.input_tokens} "
+                    f"out={result.usage.output_tokens} "
+                    f"cost=${charge.cost_usd:.4f} "
+                    f"charge=¥{charge.user_charge_cny:.4f} ({charge.cost_source})"
+                )
+            except Exception as e:
+                print(f"[bridge] 计费写入失败（不阻断主流程）：{e}")
 
         except Exception as e:
             err_str = str(e)

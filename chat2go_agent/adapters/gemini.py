@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import httpx
 
-from .base import Message
+from .base import Message, Result, Usage
 
 
 class GeminiAdapter:
@@ -25,7 +25,7 @@ class GeminiAdapter:
         model: str,
         max_tokens: int = 2048,
         timeout: int = 120,
-    ) -> str:
+    ) -> Result:
         if not self.api_key:
             raise RuntimeError("Gemini API key 未配置")
 
@@ -63,5 +63,10 @@ class GeminiAdapter:
         if not candidates:
             raise RuntimeError(f"Gemini 返回空 candidates: {data}")
         parts = candidates[0].get("content", {}).get("parts", [])
-        text = "".join(p.get("text", "") for p in parts)
-        return text.strip()
+        text = "".join(p.get("text", "") for p in parts).strip()
+        u = data.get("usageMetadata") or {}
+        usage = Usage(
+            input_tokens=int(u.get("promptTokenCount", 0) or 0),
+            output_tokens=int(u.get("candidatesTokenCount", 0) or 0),
+        )
+        return Result(text=text, usage=usage)
