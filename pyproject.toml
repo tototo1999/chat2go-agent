@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "chat2go-agent"
-version = "0.1.0"
+version = "0.2.0"
 description = "Chat2GO 本地 Agent —— 大咖在自己电脑跑，把 Claude/OpenAI/Gemini 等模型接入 Chat2GO 调试室"
 readme = "README.md"
 requires-python = ">=3.10"
