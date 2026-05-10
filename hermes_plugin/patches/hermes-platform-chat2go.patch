@@ -50,7 +50,7 @@ index a024649c..b2da2298 100644
          return None
  
 diff --git a/hermes_cli/gateway.py b/hermes_cli/gateway.py
-index 8b360087..86007c7d 100644
+index 8b360087..4846d239 100644
 --- a/hermes_cli/gateway.py
 +++ b/hermes_cli/gateway.py
 @@ -2521,6 +2521,22 @@ _PLATFORMS = [
@@ -69,7 +69,7 @@ index 8b360087..86007c7d 100644
 +            "4. hermes 启动后会自动连 chat2go.cn 监听小白消息",
 +        ],
 +        "vars": [
-+            {"name": "CHAT2GO_TOKEN", "prompt": "Connection Key (c2g-key_xxx)", "password": True,
++            {"name": "CHAT2GO_TOKEN", "prompt": "Connection Key (c2g-key_xxx)", "password": False,
 +             "help": "在 chat2go.cn 大咖设置页 → Agent 连接密钥 → 生成新密钥（一次性显示）。"},
 +        ],
 +    },
