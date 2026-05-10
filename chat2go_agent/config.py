@@ -68,6 +68,8 @@ class Credentials:
     default_commission_pct: float = 0.15
     # USD → CNY 默认汇率
     default_exchange_rate: float = 7.20
+    # 默认 brain：'auto' | 'builtin' | 'hermes'
+    default_brain: str = "auto"
 
     def get(self, provider: str) -> ProviderCreds | None:
         creds = self.providers.get(provider)
@@ -124,6 +126,8 @@ def load_credentials() -> Credentials:
         creds.default_commission_pct = float(c)
     if (r := defaults.get("exchange_rate")) is not None:
         creds.default_exchange_rate = float(r)
+    if (b := defaults.get("brain")) is not None:
+        creds.default_brain = str(b).strip().lower()
 
     for provider, env_key in ENV_KEY_MAP.items():
         yaml_block = yaml_data.get(provider, {}) or {}

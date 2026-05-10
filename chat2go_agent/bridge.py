@@ -38,8 +38,9 @@ except ImportError:
 
 from supabase import AsyncClient, acreate_client
 
-from .adapters import dispatch_call, build_adapters, split_model
+from .adapters import split_model
 from .attachments import extract_attachment_text, split_image_and_text_attachments
+from .brains import BrainContext, build_brain, find_hermes_bin, resolve_brain_name
 from .config import (
     DEFAULT_EXPERT_EMAIL,
     DEFAULT_EXPERT_PASSWORD,
@@ -49,8 +50,7 @@ from .config import (
 )
 from .memory import prefetch_memory
 from .pricing import calculate_charge
-from .prompt_builder import build_messages, build_system_prompt
-from .soul import Skill, load_skills, load_soul, select_skill_by_industry
+from .soul import load_skills, load_soul, select_skill_by_industry
 
 
 def _looks_like_markdown(text: str) -> bool:
@@ -96,13 +96,21 @@ class Chat2GOBridge:
         self.password = password
         self.creds = creds
         self.default_model = default_model or creds.default_model
-        self.adapters = build_adapters(creds)
         self.skills = load_skills()
         self.soul = load_soul()
+        self.hermes_bin = find_hermes_bin()
+        # 预实例化两种 brain：避免每次房间消息都重建
+        self._brain_cache: dict = {}
         self.sb: Optional[AsyncClient] = None
         self.expert_id: Optional[str] = None
         self.rooms: dict = {}
         self.processing: set = set()
+
+    def get_brain(self, name: str):
+        """缓存 brain 实例。"""
+        if name not in self._brain_cache:
+            self._brain_cache[name] = build_brain(self.creds, name)
+        return self._brain_cache[name]
 
     async def login(self):
         self.sb = await acreate_client(SUPABASE_URL, SUPABASE_ANON_KEY)
@@ -184,27 +192,27 @@ class Chat2GOBridge:
                 user_id=sender_user_id if sender_role == "user" else None,
             )
 
-            # 3. 合成
-            system = build_system_prompt(
-                room, soul=self.soul, skill=skill, memory_context=memory_ctx
-            )
-            messages = build_messages(
-                history,
-                current_user_msg=content,
+            # 3. 选 brain（房间 > yaml 默认 > auto）
+            brain_name = resolve_brain_name(self.creds, room)
+            brain = self.get_brain(brain_name)
+            print(f"[bridge] brain={brain_name}")
+
+            # 4. 委托给 brain
+            ctx = BrainContext(
+                room=room,
+                soul=self.soul,
+                skill=skill,
+                memory_ctx=memory_ctx,
+                history=history,
+                current_message=content,
                 image_urls=image_urls,
                 attachment_texts=attachment_texts,
-            )
-
-            # 4. dispatch
-            result = await dispatch_call(
-                self.adapters,
                 model=model,
-                system=system,
-                messages=messages,
             )
+            result = await brain.call(ctx)
             ai_text = _normalize_markdown(result.text)
             if not ai_text:
-                ai_text = f"（{provider} 返回空回复）"
+                ai_text = f"（{brain_name}/{provider} 返回空回复）"
 
             print(
                 f"[bridge] [{room['name']}] AI: "
@@ -319,7 +327,8 @@ class Chat2GOBridge:
             return
 
         print(f"[bridge] 默认模型：{self.default_model}")
-        print(f"[bridge] 已配 provider：{', '.join(sorted(self.adapters)) or '(无)'}")
+        print(f"[bridge] 默认 brain：{self.creds.default_brain}（hermes 二进制：{self.hermes_bin or '未装'}）")
+        print(f"[bridge] 已配 provider：{', '.join(sorted(self.creds.configured_providers())) or '(无)'}")
         print(f"[bridge] 已加载 skill：{', '.join(s.display_name for s in self.skills.values()) or '(无)'}")
         print(f"[bridge] SOUL.md：{'已加载' if self.soul else '未配置（用通用人格）'}")
         print(f"[bridge] 监听中… 按 Ctrl+C 退出\n")
