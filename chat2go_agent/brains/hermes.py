@@ -28,8 +28,15 @@ from pathlib import Path
 from ..adapters.base import Usage
 from . import BrainContext, BrainResult
 
-# 匹配 hermes -v 输出的 token usage 行
-_USAGE_LINE_RE = re.compile(
+# hermes -v 输出的 token usage 详细行（含 cache 信息）
+# 例：API Response received - ... Usage: Usage(cache_creation=CacheCreation(...),
+#     cache_creation_input_tokens=0, cache_read_input_tokens=19867, ...,
+#     input_tokens=3, output_tokens=8, ...)
+# 嵌套括号无法用简单 regex 匹配整块，改成"含 Usage( 的行 + input_tokens 必须出现"双条件判断
+_USAGE_DETAIL_MARKER = "Usage("
+_FIELD_RE = re.compile(r"\b(\w+)=(\d+)")
+# 旧的简单 fallback：只有 prompt + completion
+_USAGE_SIMPLE_RE = re.compile(
     r"Token usage:\s*prompt=([\d,]+),\s*completion=([\d,]+)"
 )
 # 匹配 hermes 输出末尾的 "session_id: <id>" 或 "Session: <id>" 行
@@ -134,15 +141,34 @@ class HermesBrain:
 def parse_usage_from_stderr(stderr: str) -> Usage:
     """
     从 hermes -v 的 stderr 提取 token 用量。
-    支持多 turn（多行 'Token usage:' 累加）。
-    数字可能含逗号分隔（如 19,870）。
+    多 turn 累加。优先用详细 'Usage(...)' 摘要（含 cache_*）；
+    没有则退回简单的 'Token usage: prompt=X, completion=Y'（cache 全归零）。
     """
-    total_in = 0
-    total_out = 0
-    for m in _USAGE_LINE_RE.finditer(stderr):
-        total_in += int(m.group(1).replace(",", ""))
-        total_out += int(m.group(2).replace(",", ""))
-    return Usage(input_tokens=total_in, output_tokens=total_out)
+    total = Usage()
+    matched_detail = False
+
+    for line in stderr.splitlines():
+        if _USAGE_DETAIL_MARKER not in line:
+            continue
+        fields = {k: int(v) for k, v in _FIELD_RE.findall(line)}
+        # 必须有 input_tokens 才认为是有效的 Usage 行
+        # （其他 ephemeral_* 内层字段不会满足这个条件）
+        if "input_tokens" not in fields:
+            continue
+        matched_detail = True
+        total.input_tokens += fields["input_tokens"]
+        total.output_tokens += fields.get("output_tokens", 0)
+        total.cache_creation_input_tokens += fields.get("cache_creation_input_tokens", 0)
+        total.cache_read_input_tokens += fields.get("cache_read_input_tokens", 0)
+
+    if matched_detail:
+        return total
+
+    # Fallback：简单格式（'prompt' 已含 cache_read，无法拆分 → 全当 fresh，会高估）
+    for m in _USAGE_SIMPLE_RE.finditer(stderr):
+        total.input_tokens += int(m.group(1).replace(",", ""))
+        total.output_tokens += int(m.group(2).replace(",", ""))
+    return total
 
 
 def extract_hermes_reply(stdout: str) -> str:

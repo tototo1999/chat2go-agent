@@ -57,6 +57,44 @@ def test_unknown_online_returns_zero():
     assert c.user_charge_cny == 0.0
 
 
+def test_anthropic_with_cache():
+    """Anthropic prompt caching：cache_write × 1.25，cache_read × 0.10。"""
+    # claude-sonnet-4-5: $3 input / $15 output
+    # fresh 100 + cache_write 200 + cache_read 19000 + output 50
+    # cost = (100*3 + 200*3*1.25 + 19000*3*0.10 + 50*15) / 1M
+    #      = (300 + 750 + 5700 + 750) / 1M
+    #      = 7500 / 1M = $0.0075
+    c = calculate_charge(
+        model="anthropic/claude-sonnet-4-5",
+        usage=Usage(
+            input_tokens=100,
+            cache_creation_input_tokens=200,
+            cache_read_input_tokens=19000,
+            output_tokens=50,
+        ),
+        commission_pct=0.0,
+        exchange_rate=1.0,
+    )
+    expected = (100 * 3 + 200 * 3 * 1.25 + 19000 * 3 * 0.10 + 50 * 15) / 1_000_000
+    assert abs(c.cost_usd - expected) < 1e-9
+
+
+def test_no_cache_falls_back_to_simple():
+    """非 Anthropic（cache 字段为 0）退回简单公式。"""
+    c = calculate_charge(
+        model="deepseek/deepseek-chat",
+        usage=Usage(input_tokens=1000, output_tokens=500),  # cache 字段 0
+    )
+    # 0.27 in + 1.10 out
+    expected = (1000 * 0.27 + 500 * 1.10) / 1_000_000
+    assert abs(c.cost_usd - expected) < 1e-9
+
+
+def test_total_input_tokens_property():
+    u = Usage(input_tokens=100, cache_creation_input_tokens=200, cache_read_input_tokens=300)
+    assert u.total_input_tokens == 600
+
+
 def test_zero_usage():
     c = calculate_charge(
         model="anthropic/claude-sonnet-4-5",

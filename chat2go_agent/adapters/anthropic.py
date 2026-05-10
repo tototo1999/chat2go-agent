@@ -63,6 +63,8 @@ class AnthropicAdapter:
         usage = Usage(
             input_tokens=int(u.get("input_tokens", 0) or 0),
             output_tokens=int(u.get("output_tokens", 0) or 0),
+            cache_creation_input_tokens=int(u.get("cache_creation_input_tokens", 0) or 0),
+            cache_read_input_tokens=int(u.get("cache_read_input_tokens", 0) or 0),
         )
         return Result(text=text, usage=usage)
 

@@ -255,6 +255,8 @@ class Chat2GOBridge:
                         "model": model,
                         "input_tokens": result.usage.input_tokens,
                         "output_tokens": result.usage.output_tokens,
+                        "cache_creation_input_tokens": result.usage.cache_creation_input_tokens,
+                        "cache_read_input_tokens": result.usage.cache_read_input_tokens,
                         "cost_source": charge.cost_source,
                         "cost_usd": round(charge.cost_usd, 6),
                         "commission_pct": commission,
@@ -263,9 +265,17 @@ class Chat2GOBridge:
                     },
                     returning="minimal",  # ★ 不要 RETURNING *（cost_usd 列被 GRANT 屏蔽，否则 42501）
                 ).execute()
+                u = result.usage
+                cache_note = ""
+                if u.cache_read_input_tokens or u.cache_creation_input_tokens:
+                    cache_note = (
+                        f" [fresh={u.input_tokens} "
+                        f"cache_w={u.cache_creation_input_tokens} "
+                        f"cache_r={u.cache_read_input_tokens}]"
+                    )
                 print(
-                    f"[bridge] usage: in={result.usage.input_tokens} "
-                    f"out={result.usage.output_tokens} "
+                    f"[bridge] usage: in_total={u.total_input_tokens} "
+                    f"out={u.output_tokens}{cache_note} "
                     f"cost=${charge.cost_usd:.4f} "
                     f"charge=¥{charge.user_charge_cny:.4f} ({charge.cost_source})"
                 )

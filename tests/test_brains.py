@@ -61,6 +61,38 @@ def test_parse_usage_empty_stderr():
     assert usage.output_tokens == 0
 
 
+def test_parse_usage_detail_with_cache():
+    """优先用详细 'Usage(...)' 行抽 cache_*。"""
+    stderr = (
+        "14:47:19 - root - DEBUG [...] - API Response received - Model: claude-sonnet-4-6, "
+        "Usage: Usage(cache_creation=CacheCreation(...), "
+        "cache_creation_input_tokens=0, cache_read_input_tokens=19867, "
+        "inference_geo='global', input_tokens=3, output_tokens=8, "
+        "server_tool_use=None, service_tier='standard')\n"
+        "Token usage: prompt=19,870, completion=8, total=19,878\n"
+    )
+    usage = parse_usage_from_stderr(stderr)
+    # 当详细格式可用时不应该再叠加简单格式
+    assert usage.input_tokens == 3
+    assert usage.output_tokens == 8
+    assert usage.cache_creation_input_tokens == 0
+    assert usage.cache_read_input_tokens == 19867
+
+
+def test_parse_usage_detail_multi_turn():
+    stderr = (
+        "Usage(cache_creation_input_tokens=100, cache_read_input_tokens=5000, "
+        "input_tokens=20, output_tokens=50)\n"
+        "Usage(cache_creation_input_tokens=0, cache_read_input_tokens=5500, "
+        "input_tokens=10, output_tokens=80)\n"
+    )
+    usage = parse_usage_from_stderr(stderr)
+    assert usage.input_tokens == 30          # 20 + 10
+    assert usage.output_tokens == 130        # 50 + 80
+    assert usage.cache_creation_input_tokens == 100
+    assert usage.cache_read_input_tokens == 10500  # 5000 + 5500
+
+
 def test_extract_reply_uses_context_limit_marker():
     """hermes -Q 真实输出片段：init 在前，Context limit 是末标记，回复在后。"""
     stdout = (

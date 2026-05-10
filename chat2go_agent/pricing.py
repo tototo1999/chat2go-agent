@@ -47,6 +47,10 @@ ONLINE_PRICES: dict[str, tuple[float, float]] = {
 DEFAULT_COMMISSION_PCT = 0.15  # 大咖佣金率
 DEFAULT_EXCHANGE_RATE = 7.20  # USD → CNY
 
+# Anthropic prompt caching 价格倍数（基础 input_rate 上的乘数）
+CACHE_WRITE_MULTIPLIER = 1.25   # 写入 cache 比正常 input 贵 25%
+CACHE_READ_MULTIPLIER = 0.10    # 读取 cache 是正常 input 的 10%
+
 
 @dataclass
 class CostBreakdown:
@@ -86,7 +90,13 @@ def calculate_charge(
             in_rate, out_rate = rates
         source = "online"
 
-    cost_usd = (usage.input_tokens * in_rate + usage.output_tokens * out_rate) / 1_000_000
+    # 三档 input + 一档 output。cache 字段为 0 时退化为简单公式（适配非 cache 场景）。
+    cost_usd = (
+        usage.input_tokens * in_rate
+        + usage.cache_creation_input_tokens * in_rate * CACHE_WRITE_MULTIPLIER
+        + usage.cache_read_input_tokens * in_rate * CACHE_READ_MULTIPLIER
+        + usage.output_tokens * out_rate
+    ) / 1_000_000
     user_charge_cny = cost_usd * (1 + commission_pct) * exchange_rate
     return CostBreakdown(
         cost_source=source,

@@ -21,8 +21,25 @@ class Message:
 
 @dataclass
 class Usage:
+    """
+    LLM 一次调用的 token 用量。
+
+    Anthropic 启用 prompt caching 时，input 拆三份：
+      - input_tokens: 没命中 cache 的全新 input（按基础价计费）
+      - cache_creation_input_tokens: 写入 cache 的部分（基础价 × 1.25）
+      - cache_read_input_tokens: 命中 cache 的部分（基础价 × 0.10）
+
+    其它 provider（OpenAI/Gemini/...）暂不分解，cache 字段为 0。
+    总输入 token = input_tokens + cache_creation + cache_read。
+    """
     input_tokens: int = 0
     output_tokens: int = 0
+    cache_creation_input_tokens: int = 0
+    cache_read_input_tokens: int = 0
+
+    @property
+    def total_input_tokens(self) -> int:
+        return self.input_tokens + self.cache_creation_input_tokens + self.cache_read_input_tokens
 
 
 @dataclass
