@@ -32,8 +32,12 @@ from . import BrainContext, BrainResult
 _USAGE_LINE_RE = re.compile(
     r"Token usage:\s*prompt=([\d,]+),\s*completion=([\d,]+)"
 )
-# 匹配 hermes 输出末尾的 "Session: <id>" 行
-_SESSION_FOOTER_RE = re.compile(r"\n*Session:.*$", re.MULTILINE)
+# 匹配 hermes 输出末尾的 "session_id: <id>" 或 "Session: <id>" 行
+_SESSION_FOOTER_RE = re.compile(r"\n*[Ss]ession[_ ]?id?:.*$", re.MULTILINE)
+# init banner 起始 emoji（即使 -Q 模式 hermes 仍会打印）
+_INIT_LINE_RE = re.compile(r"^\s*[⚠✅\U0001f916\U0001f511\U0001f6e0\U0001f4be\U0001f4ca\U0001f310\U0001f680]")
+# init 结尾的标记行（包含 "Context limit:"）—— 之后是真正的 AI 回复
+_INIT_END_MARKER = "Context limit:"
 
 
 class HermesBrain:
@@ -83,9 +87,7 @@ class HermesBrain:
                 f"hermes 退出码 {proc.returncode}。stderr 末尾：{stderr[-500:]}"
             )
 
-        text = stdout_b.decode(errors="replace").strip()
-        text = _SESSION_FOOTER_RE.sub("", text).strip()
-
+        text = extract_hermes_reply(stdout_b.decode(errors="replace"))
         usage = parse_usage_from_stderr(stderr)
         return BrainResult(text=text, usage=usage, model=ctx.model)
 
@@ -141,3 +143,32 @@ def parse_usage_from_stderr(stderr: str) -> Usage:
         total_in += int(m.group(1).replace(",", ""))
         total_out += int(m.group(2).replace(",", ""))
     return Usage(input_tokens=total_in, output_tokens=total_out)
+
+
+def extract_hermes_reply(stdout: str) -> str:
+    """
+    从 hermes -Q 的 stdout 提取真正的 AI 回复。
+    -Q 模式下 hermes 仍会打印 ⚠️/🤖/✅/🛠️/💾/📊 起始的 init banner，
+    以及 'Context limit: ...' 结尾标记。真正的回复在 init 之后。
+
+    策略：
+      1. 找最后一个 'Context limit:' 行，取它之后的内容
+      2. 找不到 → 退化为过滤已知 init emoji 行
+      3. 末尾 strip 掉 'session_id: ...' / 'Session: ...'
+    """
+    text = _SESSION_FOOTER_RE.sub("", stdout).strip()
+    lines = text.splitlines()
+
+    # 优先：找 init 末尾标记
+    marker = -1
+    for i, line in enumerate(lines):
+        if _INIT_END_MARKER in line:
+            marker = i
+    if marker >= 0:
+        reply = "\n".join(lines[marker + 1:]).strip()
+        if reply:
+            return reply
+
+    # Fallback：过滤 init emoji 行
+    kept = [line for line in lines if not _INIT_LINE_RE.match(line)]
+    return "\n".join(kept).strip()

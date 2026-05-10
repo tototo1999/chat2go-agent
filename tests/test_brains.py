@@ -7,7 +7,7 @@ from chat2go_agent.brains import (
     BRAIN_BUILDERS,
     resolve_brain_name,
 )
-from chat2go_agent.brains.hermes import parse_usage_from_stderr
+from chat2go_agent.brains.hermes import extract_hermes_reply, parse_usage_from_stderr
 from chat2go_agent.config import Credentials
 
 
@@ -59,6 +59,42 @@ def test_parse_usage_empty_stderr():
     usage = parse_usage_from_stderr("nothing here")
     assert usage.input_tokens == 0
     assert usage.output_tokens == 0
+
+
+def test_extract_reply_uses_context_limit_marker():
+    """hermes -Q 真实输出片段：init 在前，Context limit 是末标记，回复在后。"""
+    stdout = (
+        "⚠️  Normalized model 'anthropic/claude-sonnet-4-5' to 'claude-sonnet-4-5' for anthropic.\n"
+        "🤖 AI Agent initialized with model: claude-sonnet-4-5 (Anthropic native)\n"
+        "✅ Enabled toolset 'browser': browser_back, browser_navigate\n"
+        "🛠️  Final tool selection (29 tools): browser_back, ...\n"
+        "💾 Prompt caching: ENABLED\n"
+        "📊 Context limit: 200,000 tokens (compress at 50% = 100,000)\n"
+        "Hi! How can I help you today?\n"
+        "\n"
+        "session_id: 20260510_150143_8cb605\n"
+    )
+    assert extract_hermes_reply(stdout) == "Hi! How can I help you today?"
+
+
+def test_extract_reply_multiline():
+    stdout = (
+        "📊 Context limit: 200,000 tokens\n"
+        "第一行回复\n"
+        "第二行回复\n"
+        "session_id: 20260510_xxx\n"
+    )
+    assert extract_hermes_reply(stdout) == "第一行回复\n第二行回复"
+
+
+def test_extract_reply_fallback_when_no_marker():
+    """没有 Context limit 标记时，过滤已知 emoji 行。"""
+    stdout = (
+        "⚠️  some warning\n"
+        "✅ ok\n"
+        "Real reply here\n"
+    )
+    assert extract_hermes_reply(stdout) == "Real reply here"
 
 
 def test_brain_context_has_sane_defaults():

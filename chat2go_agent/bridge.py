@@ -260,7 +260,8 @@ class Chat2GOBridge:
                         "commission_pct": commission,
                         "exchange_rate": rate,
                         "user_charge_cny": round(charge.user_charge_cny, 4),
-                    }
+                    },
+                    returning="minimal",  # ★ 不要 RETURNING *（cost_usd 列被 GRANT 屏蔽，否则 42501）
                 ).execute()
                 print(
                     f"[bridge] usage: in={result.usage.input_tokens} "
