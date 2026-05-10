@@ -71,7 +71,10 @@ class Credentials:
 
 
 def load_dotenv(path: Path | None = None) -> None:
-    """Best-effort .env 加载（不覆盖已有环境变量）。"""
+    """Best-effort .env 加载。
+    已有非空环境变量优先（保留 export 覆盖能力）。
+    已有空值视作"未设置"，会被 .env 里的值替换。
+    """
     candidates = [path] if path else [Path(".env"), CHAT2GO_HOME / ".env"]
     for f in candidates:
         if not f or not f.exists():
@@ -81,7 +84,10 @@ def load_dotenv(path: Path | None = None) -> None:
             if not line or line.startswith("#") or "=" not in line:
                 continue
             k, _, v = line.partition("=")
-            os.environ.setdefault(k.strip(), v.strip().strip('"').strip("'"))
+            k = k.strip()
+            v = v.strip().strip('"').strip("'")
+            if not os.environ.get(k):  # 未设置 or 空值
+                os.environ[k] = v
 
 
 def load_credentials() -> Credentials:
