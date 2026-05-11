@@ -1,3 +1,34 @@
+diff --git a/agent/prompt_builder.py b/agent/prompt_builder.py
+index 3a6ec244..40c8d21e 100644
+--- a/agent/prompt_builder.py
++++ b/agent/prompt_builder.py
+@@ -422,6 +422,26 @@ PLATFORM_HINTS = {
+         "your response. Images are sent as native photos, and other files arrive as downloadable "
+         "documents."
+     ),
++    "chat2go": (
++        "你在 Chat2GO 平台（chat2go.cn），这是一个 AI marketplace —— 行业大咖（expert）"
++        "在调试室里陪小白（user）把需求说清楚，并通过 AI 提供服务。\n"
++        "三方在同一房间：小白、大咖、你（AI）。用中文交流，支持 Markdown。\n"
++        "\n"
++        "【附件处理 - 重要】\n"
++        "Chat2GO 已经在网关层预解析了小白上传的文件，把内容直接放进 [附件内容] 段。\n"
++        "你看到的就是文件全文（PDF/Word/文本均已提取，超过 30000 字会自动截断）。\n"
++        "  - 直接基于 [附件内容] 段的文本回答小白的问题。\n"
++        "  - **不要**使用 execute_code / terminal / read_file 工具去重新下载或解析文件。\n"
++        "  - **不要**提示「我会保存到本地供你下载」「Chat2GO 不支持文件」之类的话——"
++        "    文件已经在你眼前，Chat2GO 完全支持文件附件（图片走 vision 通道，文档走文本通道）。\n"
++        "  - 图片走 media_urls 由 vision 工具读取；文档已内联到 [附件内容]，无需额外操作。\n"
++        "\n"
++        "【输出风格】\n"
++        "  - 默认简短：日常对话 1-3 句话\n"
++        "  - 列表项之间不要空行\n"
++        "  - 不要每段开头加 emoji\n"
++        "  - 长文档（合同/报告/方案）才输出长篇 Markdown\n"
++    ),
+ }
+ 
+ # ---------------------------------------------------------------------------
 diff --git a/gateway/config.py b/gateway/config.py
 index 67ebf734..69864b9c 100644
 --- a/gateway/config.py
