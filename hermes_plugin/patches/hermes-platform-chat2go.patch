@@ -1,8 +1,8 @@
 diff --git a/agent/prompt_builder.py b/agent/prompt_builder.py
-index 3a6ec244..e19406c6 100644
+index 3a6ec244..5ac1bb0f 100644
 --- a/agent/prompt_builder.py
 +++ b/agent/prompt_builder.py
-@@ -422,6 +422,38 @@ PLATFORM_HINTS = {
+@@ -422,6 +422,44 @@ PLATFORM_HINTS = {
          "your response. Images are sent as native photos, and other files arrive as downloadable "
          "documents."
      ),
@@ -20,8 +20,14 @@ index 3a6ec244..e19406c6 100644
 +        "    **不要**自己用 terminal/execute_code 跑 OCR——会触发审批卡死。\n"
 +        "  - 图片走 media_urls 由 vision 工具读取；文档已内联到 [附件内容]，无需额外操作。\n"
 +        "\n"
++        "【发送消息到其他 Chat2GO 房间】\n"
++        "如果用户让你「把内容发到 X 房间」「转发给小白教室」等跨房间操作：\n"
++        "  - 用 `send_message` 工具，platform=\"chat2go\"，chat_id=<目标房间 id>\n"
++        "  - **不要**用 `chat2go-agent` shell 命令（旧的 skill 已废弃）\n"
++        "  - 不知道目标房间 id？问用户「请告诉我目标房间名或 id」，**不要瞎猜**\n"
++        "\n"
 +        "【输出限制 - 必读，避免卡死】\n"
-+        "你只能输出**纯文本/Markdown**给 Chat2GO 房间。不能反向发文件回群。\n"
++        "对本房间的回复，你只能输出**纯文本/Markdown**。不能反向发文件回群。\n"
 +        "**绝对不要**用以下工具，它们在 Chat2GO web 端不可用：\n"
 +        "  - terminal / execute_code / process（命令需要 TTY 审批，没人按）\n"
 +        "  - write_file / patch（写文件到本地用户没法访问）\n"
@@ -147,6 +153,69 @@ index 1fc3a3a8..4517d6b5 100644
      ("webhook",        PlatformInfo(label="🔗 Webhook",         default_toolset="hermes-webhook")),
      ("api_server",     PlatformInfo(label="🌐 API Server",      default_toolset="hermes-api-server")),
  ])
+diff --git a/tools/send_message_tool.py b/tools/send_message_tool.py
+index 19da4f55..7c63cdb3 100644
+--- a/tools/send_message_tool.py
++++ b/tools/send_message_tool.py
+@@ -215,6 +215,7 @@ def _handle_send(args):
+         "weixin": Platform.WEIXIN,
+         "email": Platform.EMAIL,
+         "sms": Platform.SMS,
++        "chat2go": Platform.CHAT2GO,
+     }
+     platform = platform_map.get(platform_name)
+     if not platform:
+@@ -571,6 +572,8 @@ async def _send_to_platform(platform, pconfig, chat_id, message, thread_id=None,
+             result = await _send_bluebubbles(pconfig.extra, chat_id, chunk)
+         elif platform == Platform.QQBOT:
+             result = await _send_qqbot(pconfig, chat_id, chunk)
++        elif platform == Platform.CHAT2GO:
++            result = await _send_chat2go(pconfig, chat_id, chunk)
+         else:
+             result = {"error": f"Direct sending not yet implemented for {platform.value}"}
+ 
+@@ -1510,6 +1513,41 @@ async def _send_qqbot(pconfig, chat_id, message):
+         return _error(f"QQBot send failed: {e}")
+ 
+ 
++async def _send_chat2go(pconfig, chat_id, message):
++    """
++    Send a message to a Chat2GO room.
++    Uses Chat2GoAdapter to handle connection_key → Supabase session → message insert.
++    """
++    try:
++        from gateway.platforms.chat2go import Chat2GoAdapter
++    except ImportError as e:
++        return _error(f"Chat2GO adapter import failed: {e}")
++
++    if not pconfig or not pconfig.token:
++        return _error("Chat2GO: CHAT2GO_TOKEN 未配置")
++
++    try:
++        adapter = Chat2GoAdapter(pconfig)
++        ok = await adapter.connect()
++        if not ok:
++            return _error("Chat2GO: 连接失败（看 hermes log 了解原因）")
++        try:
++            result = await adapter.send(chat_id=str(chat_id), content=message)
++        finally:
++            await adapter.disconnect()
++
++        if result.success:
++            return {
++                "success": True,
++                "platform": "chat2go",
++                "chat_id": chat_id,
++                "message_id": result.message_id,
++            }
++        return _error(f"Chat2GO send failed: {result.error}")
++    except Exception as e:
++        return _error(f"Chat2GO send failed: {e}")
++
++
+ # --- Registry ---
+ from tools.registry import registry, tool_error
+ 
 diff --git a/toolsets.py b/toolsets.py
 index f1dc7fca..52c2ed19 100644
 --- a/toolsets.py
