@@ -217,23 +217,41 @@ index 19da4f55..7c63cdb3 100644
  from tools.registry import registry, tool_error
  
 diff --git a/toolsets.py b/toolsets.py
-index f1dc7fca..52c2ed19 100644
+index f1dc7fca..b95f724c 100644
 --- a/toolsets.py
 +++ b/toolsets.py
-@@ -383,6 +383,12 @@ TOOLSETS = {
+@@ -383,6 +383,30 @@ TOOLSETS = {
          "includes": []
      },
  
 +    "hermes-chat2go": {
-+        "description": "Chat2GO toolset - 大咖 marketplace（与 chat2go.cn 网页交互）",
-+        "tools": _HERMES_CORE_TOOLS,
++        "description": "Chat2GO toolset - 大咖 marketplace (web 端，禁用 shell/写文件，避免审批卡死)",
++        # Chat2GO 用户在 web 端，没法批准 terminal/execute_code 审批，也拿不到本地写出的文件。
++        # 砍掉 terminal/process/execute_code/write_file/patch/skill_manage/delegate_task。
++        # 跨房间发消息走 send_message（platform="chat2go", chat_id=<id>），不再 shell out 到 chat2go-agent。
++        "tools": [
++            "web_search", "web_extract",
++            "read_file", "search_files",
++            "vision_analyze", "image_generate",
++            "skills_list", "skill_view",
++            "browser_navigate", "browser_snapshot", "browser_click",
++            "browser_type", "browser_scroll", "browser_back",
++            "browser_press", "browser_get_images",
++            "browser_vision", "browser_console", "browser_cdp",
++            "text_to_speech",
++            "todo", "memory",
++            "session_search",
++            "clarify",
++            "cronjob",
++            "send_message",
++        ],
 +        "includes": []
 +    },
 +
      "hermes-wecom": {
          "description": "WeCom bot toolset - enterprise WeChat messaging (full access)",
          "tools": _HERMES_CORE_TOOLS,
-@@ -410,7 +416,7 @@ TOOLSETS = {
+@@ -410,7 +434,7 @@ TOOLSETS = {
      "hermes-gateway": {
          "description": "Gateway toolset - union of all messaging platform tools",
          "tools": [],
