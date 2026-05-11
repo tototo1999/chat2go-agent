@@ -1,8 +1,8 @@
 diff --git a/agent/prompt_builder.py b/agent/prompt_builder.py
-index 3a6ec244..5ac1bb0f 100644
+index 3a6ec244..4a309ca7 100644
 --- a/agent/prompt_builder.py
 +++ b/agent/prompt_builder.py
-@@ -422,6 +422,44 @@ PLATFORM_HINTS = {
+@@ -422,6 +422,50 @@ PLATFORM_HINTS = {
          "your response. Images are sent as native photos, and other files arrive as downloadable "
          "documents."
      ),
@@ -26,13 +26,19 @@ index 3a6ec244..5ac1bb0f 100644
 +        "  - **不要**用 `chat2go-agent` shell 命令（旧的 skill 已废弃）\n"
 +        "  - 不知道目标房间 id？问用户「请告诉我目标房间名或 id」，**不要瞎猜**\n"
 +        "\n"
-+        "【输出限制 - 必读，避免卡死】\n"
-+        "对本房间的回复，你只能输出**纯文本/Markdown**。不能反向发文件回群。\n"
-+        "**绝对不要**用以下工具，它们在 Chat2GO web 端不可用：\n"
-+        "  - terminal / execute_code / process（命令需要 TTY 审批，没人按）\n"
-+        "  - write_file / patch（写文件到本地用户没法访问）\n"
-+        "  - pip install / 生成 PDF / reportlab / pymupdf（同上）\n"
-+        "  - 「保存到桌面/本地供下载」这种话——用户在 web 端，没你的桌面。\n"
++        "【工具可用清单 - 必读】\n"
++        "在 Chat2GO 房间你**只有这些工具**：\n"
++        "  send_message, vision_analyze, image_generate, web_search, web_extract,\n"
++        "  read_file, search_files, memory, todo, session_search, clarify, cronjob,\n"
++        "  text_to_speech, skills_list, skill_view, browser_*\n"
++        "\n"
++        "下面这些工具**在本房间不存在**，不要调用（即使你训练时见过）：\n"
++        "  ✗ terminal / process / execute_code （不存在，调了会自我修正失败 3 次后停回复）\n"
++        "  ✗ write_file / patch （不存在）\n"
++        "  ✗ pip install / 生成 PDF / reportlab / pymupdf 之类靠 shell 的库\n"
++        "  ✗ 「保存到桌面/本地供下载」——用户在 web 端，没你的桌面\n"
++        "\n"
++        "输出：只能输出**纯文本/Markdown**。需要给文件？把完整内容写在消息体里。\n"
 +        "\n"
 +        "如果用户要「生成报告 / 写文档 / 做 PDF」：\n"
 +        "  → 直接在消息里输出完整的 Markdown 内容。用户可以复制或浏览器打印转 PDF。\n"
