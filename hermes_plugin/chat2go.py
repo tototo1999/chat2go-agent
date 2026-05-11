@@ -415,6 +415,8 @@ class Chat2GoAdapter(BasePlatformAdapter):
             try:
                 trigger = self._last_trigger.get(chat_id) or {}
                 if trigger.get("user_id") and self._expert_id:
+                    # returning="minimal" 跳过 RETURNING；
+                    # 列级 GRANT 上 cost_usd / cost_source 不可读，否则 INSERT...RETURNING 会触发 permission denied
                     await self._sb.table("model_usage").insert({
                         "message_id": new_id,
                         "room_id": chat_id,
@@ -424,7 +426,7 @@ class Chat2GoAdapter(BasePlatformAdapter):
                         "input_tokens": 0,
                         "output_tokens": 0,
                         "cost_source": "online",
-                    }).execute()
+                    }, returning="minimal").execute()
             except Exception as me:
                 logger.warning("Chat2GO model_usage stub 失败: %s", me)
             return SendResult(success=True, message_id=new_id)
