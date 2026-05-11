@@ -1,8 +1,8 @@
 diff --git a/agent/prompt_builder.py b/agent/prompt_builder.py
-index 3a6ec244..40c8d21e 100644
+index 3a6ec244..e19406c6 100644
 --- a/agent/prompt_builder.py
 +++ b/agent/prompt_builder.py
-@@ -422,6 +422,26 @@ PLATFORM_HINTS = {
+@@ -422,6 +422,38 @@ PLATFORM_HINTS = {
          "your response. Images are sent as native photos, and other files arrive as downloadable "
          "documents."
      ),
@@ -12,19 +12,31 @@ index 3a6ec244..40c8d21e 100644
 +        "三方在同一房间：小白、大咖、你（AI）。用中文交流，支持 Markdown。\n"
 +        "\n"
 +        "【附件处理 - 重要】\n"
-+        "Chat2GO 已经在网关层预解析了小白上传的文件，把内容直接放进 [附件内容] 段。\n"
++        "Chat2GO 已经在网关层预解析了上传的文件，把内容直接放进 [附件内容] 段。\n"
 +        "你看到的就是文件全文（PDF/Word/文本均已提取，超过 30000 字会自动截断）。\n"
-+        "  - 直接基于 [附件内容] 段的文本回答小白的问题。\n"
-+        "  - **不要**使用 execute_code / terminal / read_file 工具去重新下载或解析文件。\n"
-+        "  - **不要**提示「我会保存到本地供你下载」「Chat2GO 不支持文件」之类的话——"
-+        "    文件已经在你眼前，Chat2GO 完全支持文件附件（图片走 vision 通道，文档走文本通道）。\n"
++        "  - 直接基于 [附件内容] 段的文本回答。\n"
++        "  - 如果 [附件内容] 显示 [文件文本为空]：说明这是扫描件/图片 PDF。\n"
++        "    告诉用户「这份文件是扫描件，需要 OCR 才能识别，我建议你重新发可选中文字的版本」。\n"
++        "    **不要**自己用 terminal/execute_code 跑 OCR——会触发审批卡死。\n"
 +        "  - 图片走 media_urls 由 vision 工具读取；文档已内联到 [附件内容]，无需额外操作。\n"
++        "\n"
++        "【输出限制 - 必读，避免卡死】\n"
++        "你只能输出**纯文本/Markdown**给 Chat2GO 房间。不能反向发文件回群。\n"
++        "**绝对不要**用以下工具，它们在 Chat2GO web 端不可用：\n"
++        "  - terminal / execute_code / process（命令需要 TTY 审批，没人按）\n"
++        "  - write_file / patch（写文件到本地用户没法访问）\n"
++        "  - pip install / 生成 PDF / reportlab / pymupdf（同上）\n"
++        "  - 「保存到桌面/本地供下载」这种话——用户在 web 端，没你的桌面。\n"
++        "\n"
++        "如果用户要「生成报告 / 写文档 / 做 PDF」：\n"
++        "  → 直接在消息里输出完整的 Markdown 内容。用户可以复制或浏览器打印转 PDF。\n"
++        "  → 不要承诺「我会生成文件给你下载」——做不到。\n"
 +        "\n"
 +        "【输出风格】\n"
 +        "  - 默认简短：日常对话 1-3 句话\n"
 +        "  - 列表项之间不要空行\n"
 +        "  - 不要每段开头加 emoji\n"
-+        "  - 长文档（合同/报告/方案）才输出长篇 Markdown\n"
++        "  - 长文档（合同/报告/方案）输出完整 Markdown，**直接写在消息体里**\n"
 +    ),
  }
  
