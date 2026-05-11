@@ -87,6 +87,11 @@ class Chat2GoAdapter(BasePlatformAdapter):
         self._room_image_log: Dict[str, list] = {}
         self._IMG_LOG_MAX = 10           # 最多保留每房间最近 10 张
         self._IMG_LOG_TTL_SEC = 3600     # 只追溯 1 小时内的图片
+        # 记录每房间最后一条触发消息（msg_id + user_id），写 model_usage 时用
+        self._last_trigger: Dict[str, Dict[str, str]] = {}
+        # AI 写回 chat2go 用的默认模型标识（前端 shortModelName 会美化）
+        # 真正的 token 数 hermes brain 没回传给 adapter，这里写 stub 0 让 UI 能渲染。
+        self._stub_model = os.getenv("CHAT2GO_STUB_MODEL", "anthropic/claude-sonnet-4-6")
 
         logger.info(
             "Chat2GO initialized: url=%s token=%s***",
@@ -353,6 +358,12 @@ class Chat2GoAdapter(BasePlatformAdapter):
                         "如果记不清细节，回滚查上一轮 AI 回复，或再次调用 vision_analyze 看缓存路径。"
                     )
 
+            # 记下本房间最近的触发消息，send() 时写 model_usage stub 用
+            self._last_trigger[room_id] = {
+                "msg_id": str(msg_id),
+                "user_id": msg.get("user_id") or "",
+            }
+
             event = MessageEvent(
                 text=content,
                 message_type=MessageType.PHOTO if media_urls else MessageType.TEXT,
@@ -399,6 +410,23 @@ class Chat2GoAdapter(BasePlatformAdapter):
                 # 限制集合大小
                 if len(self._self_sent_ids) > 500:
                     self._self_sent_ids = set(list(self._self_sent_ids)[-200:])
+            # 写一行 model_usage stub，让 chat2go web UI 能渲染模型名/用量徽章
+            # hermes brain 不回传 token 计数，这里用 0；前端 fallback context window
+            try:
+                trigger = self._last_trigger.get(chat_id) or {}
+                if trigger.get("user_id") and self._expert_id:
+                    await self._sb.table("model_usage").insert({
+                        "message_id": new_id,
+                        "room_id": chat_id,
+                        "expert_id": self._expert_id,
+                        "triggered_by": trigger["user_id"],
+                        "model": self._stub_model,
+                        "input_tokens": 0,
+                        "output_tokens": 0,
+                        "cost_source": "online",
+                    }).execute()
+            except Exception as me:
+                logger.warning("Chat2GO model_usage stub 失败: %s", me)
             return SendResult(success=True, message_id=new_id)
         except Exception as e:
             logger.exception("Chat2GO send 失败")
