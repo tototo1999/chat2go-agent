@@ -82,6 +82,11 @@ class Chat2GoAdapter(BasePlatformAdapter):
         self._processing: set[str] = set()
         # 防回环：记录我们刚发出去的 message_id，下次 Realtime 收到自己消息时跳过
         self._self_sent_ids: set[str] = set()
+        # 每个房间最近的图片记录，给后续 text-only 消息当上下文（防止 AI 说「我没收到截图」）
+        # room_id -> list of {name, ts(iso str), cached_path}
+        self._room_image_log: Dict[str, list] = {}
+        self._IMG_LOG_MAX = 10           # 最多保留每房间最近 10 张
+        self._IMG_LOG_TTL_SEC = 3600     # 只追溯 1 小时内的图片
 
         logger.info(
             "Chat2GO initialized: url=%s token=%s***",
@@ -291,6 +296,15 @@ class Chat2GoAdapter(BasePlatformAdapter):
                         cached_path = await cache_image_from_url(url, ext=ext)
                         media_urls.append(cached_path)
                         media_types.append(mime or "image/jpeg")
+                        # 记到房间图片历史里，给后续 text-only 消息提供上下文
+                        log = self._room_image_log.setdefault(room_id, [])
+                        log.append({
+                            "name": name,
+                            "ts": msg.get("created_at") or "",
+                            "cached_path": cached_path,
+                        })
+                        if len(log) > self._IMG_LOG_MAX:
+                            del log[: len(log) - self._IMG_LOG_MAX]
                         logger.info(
                             "Chat2GO: cached image %s → %s", name, cached_path
                         )
@@ -309,6 +323,35 @@ class Chat2GoAdapter(BasePlatformAdapter):
                     text = await _extract_attachment_text(name, url)
                     lines.append(f"\n--- 文件：{name} ---\n{text}\n--- 文件结束 ---")
                 content = content + "\n".join(lines)
+
+            # 当前消息没新图，但本房间最近 1 小时有过图 → 附加 system 提示
+            # 防止 AI 跨轮丢失上下文后说「我没收到截图」
+            if not media_urls:
+                from datetime import timezone
+                now = datetime.now(timezone.utc)
+                recent = []
+                for entry in self._room_image_log.get(room_id, []):
+                    try:
+                        ets = datetime.fromisoformat(
+                            entry["ts"].replace("Z", "+00:00")
+                        )
+                        if (now - ets).total_seconds() <= self._IMG_LOG_TTL_SEC:
+                            recent.append(entry)
+                    except Exception:
+                        pass
+                if recent:
+                    items = "\n".join(
+                        f"  · {e['name']}（路径：{e['cached_path']}）"
+                        for e in recent[-5:]
+                    )
+                    content = (content or "") + (
+                        "\n\n[系统提示｜本房间最近图片历史]\n"
+                        f"小白/大咖此前发过 {len(recent)} 张图，已由网关 vision_analyze 处理过。"
+                        "你的对话历史里能找到对应的 tool_result（图片分析结果），那就是图。\n"
+                        "最近 5 张：\n" + items + "\n"
+                        "**绝对不要说「我没有收到截图」**——图确实已传入并已被分析。"
+                        "如果记不清细节，回滚查上一轮 AI 回复，或再次调用 vision_analyze 看缓存路径。"
+                    )
 
             event = MessageEvent(
                 text=content,
