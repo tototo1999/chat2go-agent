@@ -301,11 +301,13 @@ class Chat2GoAdapter(BasePlatformAdapter):
                 else:
                     non_image_attachments.append((name, url))
 
-            # 非图片附件：在 text 末尾追加 URL 提示（hermes 没有附带文档下载机制，留 URL 让 AI 决定要不要 fetch）
+            # 非图片附件：直接预提取文本（PDF/DOCX/TXT 等）追加到 content
+            # 不让 AI 用 execute_code 解析，避免触发 hermes 的命令审批拦截
             if non_image_attachments:
-                lines = ["", "【附件】"]
+                lines = ["", "【附件内容】"]
                 for name, url in non_image_attachments:
-                    lines.append(f"- {name}: {url}")
+                    text = await _extract_attachment_text(name, url)
+                    lines.append(f"\n--- 文件：{name} ---\n{text}\n--- 文件结束 ---")
                 content = content + "\n".join(lines)
 
             event = MessageEvent(
@@ -397,3 +399,62 @@ class Chat2GoAdapter(BasePlatformAdapter):
         except Exception:
             pass
         return {"name": chat_id, "type": "group", "chat_id": chat_id}
+
+
+async def _extract_attachment_text(name: str, url: str, max_chars: int = 30000) -> str:
+    """
+    下载非图片附件并提取文本。失败返回描述字符串（不抛异常，让 AI 看到原因）。
+    支持：txt/md/csv/json/html/xml/log、pdf、docx
+    """
+    name_lower = name.lower()
+    try:
+        async with httpx.AsyncClient(timeout=30) as client:
+            resp = await client.get(url)
+            resp.raise_for_status()
+            data = resp.content
+    except Exception as e:
+        return f"[下载失败: {e}]"
+
+    text = ""
+
+    # 文本类
+    text_exts = (".txt", ".md", ".markdown", ".csv", ".json", ".html", ".htm", ".xml", ".log")
+    if name_lower.endswith(text_exts):
+        try:
+            text = data.decode("utf-8", errors="replace")
+        except Exception:
+            text = data.decode("latin-1", errors="replace")
+
+    # PDF
+    elif name_lower.endswith(".pdf"):
+        try:
+            from io import BytesIO
+            import pypdf
+            reader = pypdf.PdfReader(BytesIO(data))
+            text = "\n".join((p.extract_text() or "") for p in reader.pages)
+        except ImportError:
+            return "[PDF 解析需要 pypdf：在 hermes venv 装 pip install pypdf]"
+        except Exception as e:
+            return f"[PDF 解析失败: {e}]"
+
+    # DOCX
+    elif name_lower.endswith(".docx"):
+        try:
+            from io import BytesIO
+            import docx as _docx
+            doc = _docx.Document(BytesIO(data))
+            text = "\n".join(p.text for p in doc.paragraphs)
+        except ImportError:
+            return "[DOCX 解析需要 python-docx]"
+        except Exception as e:
+            return f"[DOCX 解析失败: {e}]"
+
+    else:
+        return f"[不支持的文件类型，可访问 URL: {url}]"
+
+    text = text.strip()
+    if not text:
+        return "[文件文本为空 / 无法提取]"
+    if len(text) > max_chars:
+        text = text[:max_chars] + f"\n\n[... 文件过长，已截断到 {max_chars} 字符 ...]"
+    return text
