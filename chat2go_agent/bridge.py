@@ -73,11 +73,12 @@ def _normalize_markdown(text: str) -> str:
     return text.strip()
 
 
-async def _fetch_history(sb, room_id: str, limit: int = 12) -> list:
+async def _fetch_history(sb, room_id: str, channel: str = "main", limit: int = 12) -> list:
     r = (
         await sb.table("messages")
         .select("role,content,attachments,created_at")
         .eq("room_id", room_id)
+        .eq("channel", channel)
         .order("created_at", desc=True)
         .limit(limit)
         .execute()
@@ -160,10 +161,17 @@ class Chat2GOBridge:
         attachments = msg.get("attachments") or []
         sender_role = msg.get("role", "user")  # 'user' | 'expert'
         sender_user_id = msg.get("user_id")
+        channel = msg.get("channel") or "main"
 
         if msg_id in self.processing:
             return
         self.processing.add(msg_id)
+
+        # expert_user: 大咖 ↔ 小白 私聊，AI 不参与
+        if channel == "expert_user":
+            print(f"[bridge] skip msg in channel=expert_user (AI 不参与) id={msg_id}")
+            self.processing.discard(msg_id)
+            return
 
         room = self.rooms.get(room_id)
         if not room:
@@ -195,7 +203,7 @@ class Chat2GOBridge:
                 print(f"[bridge] 图片附件: {url[:60]}…")
 
             # 2. 历史 + skill + memory
-            history = await _fetch_history(self.sb, room_id, limit=12)
+            history = await _fetch_history(self.sb, room_id, channel=channel, limit=12)
             history = [
                 m for m in history if m.get("content") != content or m.get("role") != sender_role
             ]
@@ -234,12 +242,13 @@ class Chat2GOBridge:
                 f"{ai_text[:80]}{'…' if len(ai_text) > 80 else ''}"
             )
 
-            # 5. 写回 AI 消息
+            # 5. 写回 AI 消息（保持同一 channel）
             ai_resp = await self.sb.table("messages").insert(
                 {
                     "room_id": room_id,
                     "user_id": self.expert_id,
                     "role": "ai",
+                    "channel": channel,
                     "type": "markdown" if _looks_like_markdown(ai_text) else "text",
                     "content": ai_text,
                 }
