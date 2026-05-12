@@ -352,15 +352,22 @@ class Chat2GOBridge:
             )
 
         if not msg:
+            print(f"[bridge][debug] 收到空 payload: keys={list(payload.keys()) if isinstance(payload, dict) else type(payload).__name__}")
             return
 
         role = msg.get("role")
         room_id = msg.get("room_id")
+        channel = msg.get("channel", "main")
 
-        if role == "ai" or room_id not in self.rooms:
+        print(f"[bridge][debug] realtime 收到事件: role={role} room={str(room_id)[:8]}… channel={channel} known_rooms={list(self.rooms.keys())[:3]}")
+
+        if role == "ai":
+            return
+        if room_id not in self.rooms:
+            print(f"[bridge][debug] 跳过：room {str(room_id)[:8]}… 不在我管理的房间列表里")
             return
 
-        print(f"[bridge][debug] 收到 INSERT: role={role} room={str(room_id)[:8]}…")
+        print(f"[bridge][debug] 派发 handle_message: id={str(msg.get('id'))[:8]}…")
 
         try:
             loop = asyncio.get_running_loop()
