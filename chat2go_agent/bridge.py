@@ -124,6 +124,7 @@ class Chat2GOBridge:
                 self.expert_id = info["expert_id"]
                 print(f"[bridge] 已通过 connection_key 登录："
                       f"{info['email']} (id={self.expert_id[:8]}…)")
+                await self._sync_realtime_auth()
                 return
             except Exception as e:
                 print(f"[bridge] connection_key 登录失败：{e}")
@@ -135,6 +136,21 @@ class Chat2GOBridge:
         )
         self.expert_id = resp.user.id
         print(f"[bridge] 已登录：{self.email}  (id={self.expert_id[:8]}…)")
+        await self._sync_realtime_auth()
+
+    async def _sync_realtime_auth(self):
+        """把当前 JWT 显式同步给 realtime websocket，
+        否则 RLS 收紧后 realtime 默认按 anon 判权限，消息推不过来。"""
+        try:
+            session = await self.sb.auth.get_session()
+            token = getattr(session, "access_token", None) if session else None
+            if token:
+                await self.sb.realtime.set_auth(token)
+                print(f"[bridge] realtime auth 已同步 (token={token[:12]}…)")
+            else:
+                print(f"[bridge][warn] 没拿到 access_token，realtime 可能按 anon 判 RLS")
+        except Exception as e:
+            print(f"[bridge][warn] realtime set_auth 失败: {e}")
 
     async def load_rooms(self):
         result = (
