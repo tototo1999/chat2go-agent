@@ -107,6 +107,9 @@ class Chat2GOBridge:
         self.expert_id: Optional[str] = None
         self.rooms: dict = {}
         self.processing: set = set()
+        # 启动时间（用于判断 restart_requested_at 是否新于本次启动 → 需重启）
+        import datetime as _dt
+        self._started_at = _dt.datetime.now(_dt.timezone.utc)
 
     def get_brain(self, name: str):
         """缓存 brain 实例。"""
@@ -452,11 +455,36 @@ class Chat2GOBridge:
             await channel.subscribe()
             print("[bridge][debug] realtime channel subscribed (no callback)")
 
-        # 兜底：每 5 秒轮询一次 messages 表，捕捉漏掉的新消息
+        # 兜底：每 5 秒轮询一次 messages 表，捕捉漏掉的新消息 + 顺手写心跳 / 查重启信号
         last_seen_ts: dict = {}
+        import datetime as _dt
         try:
             while True:
                 await asyncio.sleep(5)
+                # ── 心跳 + 重启信号 ──
+                try:
+                    pong = await self.sb.rpc(
+                        "bridge_pong",
+                        {"p_pid": os.getpid(), "p_hostname": os.uname().nodename},
+                    ).execute()
+                    # pong 后顺手查一下 restart_requested_at
+                    st = (
+                        await self.sb.table("bridge_state")
+                        .select("restart_requested_at")
+                        .eq("id", "singleton")
+                        .maybe_single()
+                        .execute()
+                    )
+                    req = (st.data or {}).get("restart_requested_at") if st else None
+                    if req:
+                        req_dt = _dt.datetime.fromisoformat(req.replace("Z", "+00:00"))
+                        if req_dt > self._started_at:
+                            print(f"[bridge] 收到重启请求 @ {req_dt}，自我退出（launchd 会拉起）")
+                            sys.exit(1)
+                except SystemExit:
+                    raise
+                except Exception as e:
+                    print(f"[bridge][heartbeat] 失败（忽略）: {e}")
                 try:
                     await self.load_rooms()
                 except Exception as e:
