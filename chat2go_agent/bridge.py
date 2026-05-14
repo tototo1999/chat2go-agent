@@ -224,6 +224,17 @@ class Chat2GOBridge:
             self.processing.discard(msg_id)
             return
 
+        # 真人互@ → AI 不响应（消息里 @ 的是非 AI 的人）
+        import re as _re
+        ai_name = (room.get("ai_name") or "AI 助手").strip()
+        _AI_ALIASES = {ai_name, "AI 助手", "AI", "ai"}
+        _mentions = _re.findall(r"@([^\s@,，。?？!！]+)", content or "")
+        _human_mentions = [n for n in _mentions if n not in _AI_ALIASES]
+        if _human_mentions:
+            print(f"[bridge] skip msg (人类互@: {_human_mentions}) id={msg_id}")
+            self.processing.discard(msg_id)
+            return
+
         model = self.resolve_model(room)
         provider, _ = split_model(model)
 
