@@ -112,10 +112,21 @@ def main() -> None:
         default_model=args.model,
     )
 
-    try:
-        asyncio.run(bridge.run())
-    except KeyboardInterrupt:
-        print("\n[bridge] 已退出。")
+    import time
+    delay = 5
+    while True:
+        try:
+            asyncio.run(bridge.run())
+            break  # 正常退出（不应发生）
+        except KeyboardInterrupt:
+            print("\n[bridge] 已退出。")
+            break
+        except Exception as e:
+            print(f"[bridge] ⚠️  异常崩溃：{e}，{delay} 秒后自动重启…")
+            time.sleep(delay)
+            delay = min(delay * 2, 120)  # 指数退避，最长 2 分钟
+        else:
+            delay = 5  # 成功运行后重置
 
 
 if __name__ == "__main__":

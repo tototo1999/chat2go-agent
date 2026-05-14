@@ -152,6 +152,24 @@ class Chat2GOBridge:
         except Exception as e:
             print(f"[bridge][warn] realtime set_auth 失败: {e}")
 
+    async def _refresh_session_loop(self):
+        """后台续命：每 ~50 分钟主动刷新一次 access_token 并重新同步给 realtime。
+        Supabase access_token 默认 1 小时过期；不刷新就会卡死在 'JWT expired'。"""
+        while True:
+            try:
+                await asyncio.sleep(50 * 60)  # 50 分钟，提前 10 分钟刷
+                resp = await self.sb.auth.refresh_session()
+                new_token = getattr(getattr(resp, "session", None), "access_token", None)
+                if new_token:
+                    await self.sb.realtime.set_auth(new_token)
+                    print(f"[bridge] 自动续命 token={new_token[:12]}…")
+                else:
+                    print(f"[bridge][warn] refresh_session 没返回新 token")
+            except Exception as e:
+                print(f"[bridge][warn] refresh_session 失败: {e}")
+                # 失败重试间隔短一点
+                await asyncio.sleep(60)
+
     async def load_rooms(self):
         result = (
             await self.sb.table("rooms").select("*").eq("expert_id", self.expert_id).execute()
@@ -178,6 +196,18 @@ class Chat2GOBridge:
         sender_role = msg.get("role", "user")  # 'user' | 'expert'
         sender_user_id = msg.get("user_id")
         channel = msg.get("channel") or "main"
+
+        # Realtime payload 有时不含 attachments（jsonb 字段可能被省略）
+        # 如果 attachments 为空，回查数据库补全
+        if not attachments and msg_id:
+            try:
+                row = (await self.sb.table("messages").select("attachments").eq("id", msg_id).maybe_single().execute())
+                if row and row.data:
+                    attachments = row.data.get("attachments") or []
+                    if attachments:
+                        print(f"[bridge] 补全附件 from DB: {len(attachments)} 个")
+            except Exception as e:
+                print(f"[bridge][warn] 补全附件失败: {e}")
 
         if msg_id in self.processing:
             return
@@ -380,6 +410,9 @@ class Chat2GOBridge:
         await self.login()
         await self.load_rooms()
 
+        # 后台 token 续命：每 50 分钟刷新一次，防 JWT expired
+        asyncio.create_task(self._refresh_session_loop())
+
         if not self.rooms:
             print("[bridge] 没有属于你的调试室。请先在网页上新建一个调试室。")
             return
@@ -413,7 +446,11 @@ class Chat2GOBridge:
         try:
             while True:
                 await asyncio.sleep(5)
-                await self.load_rooms()
+                try:
+                    await self.load_rooms()
+                except Exception as e:
+                    print(f"[bridge][poll] load_rooms 失败（网络抖动？）: {e}")
+                    continue
                 for room_id in list(self.rooms.keys()):
                     try:
                         q = (
@@ -468,6 +505,7 @@ async def cmd_set_prompt(room_id: str, prompt: str, email: str, password: str) -
 async def cmd_set_model(room_id: str, model: str, email: str, password: str) -> None:
     sb = await _login_for_admin(email, password)
     if "/" not in model:
+        # 兼容老写法：无 provider 前缀时默认 anthropic；gemini 模型须显式带前缀
         model = f"anthropic/{model}"
     await sb.table("rooms").update({"model": model}).eq("id", room_id).execute()
     print(f"[bridge] room {room_id[:8]}… model 已更新为 {model}。")
