@@ -108,6 +108,9 @@ class Chat2GOBridge:
         self.expert_id: Optional[str] = None
         self.rooms: dict = {}
         self.processing: set = set()
+        # 持有 fire-and-forget 协程的强引用,避免 Python 3.11+ asyncio 弱引用模型
+        # 把没在主流程 await 的 task 静默 GC 掉(参见 sync_memory 调用)
+        self._bg_tasks: set = set()
         # 启动时间（用于判断 restart_requested_at 是否新于本次启动 → 需重启）
         import datetime as _dt
         self._started_at = _dt.datetime.now(_dt.timezone.utc)
@@ -117,6 +120,13 @@ class Chat2GOBridge:
         if name not in self._brain_cache:
             self._brain_cache[name] = build_brain(self.creds, name)
         return self._brain_cache[name]
+
+    def _spawn(self, coro):
+        """fire-and-forget 协程并持引用,避免被 GC。完成后自动从集合移除。"""
+        t = asyncio.create_task(coro)
+        self._bg_tasks.add(t)
+        t.add_done_callback(self._bg_tasks.discard)
+        return t
 
     async def login(self):
         self.sb = await acreate_client(SUPABASE_URL, SUPABASE_ANON_KEY)
@@ -328,7 +338,7 @@ class Chat2GOBridge:
 
             # 6. 大咖发言后异步提取记忆（不阻断主流程）
             if sender_role == "expert":
-                asyncio.create_task(sync_memory(
+                self._spawn(sync_memory(
                     sb=self.sb,
                     adapters=brain.llm_adapters if hasattr(brain, "llm_adapters") else (brain.adapters if hasattr(brain, "adapters") else {}),
                     model=model,
@@ -342,11 +352,8 @@ class Chat2GOBridge:
             # 6b. DSPy 自动提取长期记忆（大咖 + 小白均覆盖）
             try:
                 dspy_user_id = sender_user_id or room_id
-                asyncio.create_task(
-                    asyncio.get_event_loop().run_in_executor(
-                        None, dspy_extract, content, ai_text, dspy_user_id
-                    )
-                )
+                loop = asyncio.get_event_loop()
+                loop.run_in_executor(None, dspy_extract, content, ai_text, dspy_user_id)
             except Exception as _de:
                 print(f"[bridge][dspy] extract 任务创建失败（忽略）: {_de}")
 
