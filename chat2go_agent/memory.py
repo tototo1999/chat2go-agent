@@ -99,8 +99,10 @@ async def sync_memory(
     大咖发言后异步调用：提取记忆并写入 memories 表。
     不阻断主流程，所有异常静默处理。
     """
+    print(f"[memory] sync_memory 入口: room={room_id[:8]}… expert_msg={expert_message[:40]!r}")
     try:
         if not expert_message.strip():
+            print(f"[memory] expert_msg 空,跳过")
             return
 
         dialogue = f"大咖：{expert_message}\nAI：{ai_message}" if ai_message else f"大咖：{expert_message}"
