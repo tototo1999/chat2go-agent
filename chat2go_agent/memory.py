@@ -139,10 +139,12 @@ async def sync_memory(
 
         raw = (getattr(result, "text", "") or "").strip()
         if not raw:
+            print(f"[memory] LLM 返回空,跳过")
             return
         # 从输出里提取 JSON 数组（有时模型会包一层 markdown ```、或返回 {items:[...]}）
         m = re.search(r"\[.*\]", raw, re.DOTALL)
         if not m:
+            print(f"[memory] LLM 返回里找不到 [...] 数组,跳过; raw={raw[:200]!r}")
             return
         try:
             items = json.loads(m.group())
@@ -150,7 +152,11 @@ async def sync_memory(
             print(f"[memory] JSON 解析失败（跳过）：{e}; raw={raw[:200]!r}")
             return
 
-        if not isinstance(items, list) or not items:
+        if not isinstance(items, list):
+            print(f"[memory] items 不是 list,跳过; type={type(items).__name__}")
+            return
+        if not items:
+            print(f"[memory] LLM 判定无事实可记 (items=[]),跳过")
             return
 
         for item in items:
