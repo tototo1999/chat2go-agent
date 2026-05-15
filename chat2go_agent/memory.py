@@ -124,7 +124,9 @@ async def sync_memory(
             max_tokens=512,
             timeout=10,
         ))
+        print(f"[memory] 进入 await asyncio.wait(timeout=15)")
         done, pending = await asyncio.wait({llm_task}, timeout=15)
+        print(f"[memory] wait 返回:done={len(done)} pending={len(pending)} task_done={llm_task.done()}")
         if not done:
             print(f"[memory] LLM 调用硬超时（>15s,放弃,不阻塞主流程）")
             llm_task.cancel()  # 发个 cancel 信号,但不 await,zombie 自己跑
