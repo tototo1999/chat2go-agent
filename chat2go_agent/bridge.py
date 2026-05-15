@@ -1,5 +1,5 @@
 """
-Chat2GO.Ai · Agent Bridge (async)
+Chat2GO.ai · Agent Bridge (async)
 ================================
 
 大咖在本地运行此进程。订阅 Supabase Realtime → 收到小白/大咖消息 →

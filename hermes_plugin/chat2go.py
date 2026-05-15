@@ -1,5 +1,5 @@
 """
-Chat2GO.Ai platform adapter for Hermes.
+Chat2GO.ai platform adapter for Hermes.
 
 让 hermes 把 chat2go.cn 当成一个原生 IM 渠道（和 Discord/Telegram 平起平坐）。
 
@@ -54,12 +54,12 @@ def check_chat2go_requirements() -> bool:
         import supabase  # noqa: F401
         return True
     except ImportError:
-        logger.warning("Chat2GO.Ai: supabase-py 未安装（pip install supabase）")
+        logger.warning("Chat2GO.ai: supabase-py 未安装（pip install supabase）")
         return False
 
 
 class Chat2GoAdapter(BasePlatformAdapter):
-    """Chat2GO.Ai 平台 adapter（订阅 Supabase Realtime + 写回消息）。"""
+    """Chat2GO.ai 平台 adapter（订阅 Supabase Realtime + 写回消息）。"""
 
     def __init__(self, config: PlatformConfig):
         super().__init__(config, Platform.CHAT2GO)
@@ -94,7 +94,7 @@ class Chat2GoAdapter(BasePlatformAdapter):
         self._stub_model = os.getenv("CHAT2GO_STUB_MODEL", "anthropic/claude-sonnet-4-6")
 
         logger.info(
-            "Chat2GO.Ai initialized: url=%s token=%s***",
+            "Chat2GO.ai initialized: url=%s token=%s***",
             self.supabase_url,
             (self.token or "")[:16],
         )
@@ -142,7 +142,7 @@ class Chat2GoAdapter(BasePlatformAdapter):
             self._expert_id = otp["expert_id"]
             self._expert_email = otp["email"]
             logger.info(
-                "Chat2GO.Ai authenticated: %s (expert=%s)",
+                "Chat2GO.ai authenticated: %s (expert=%s)",
                 self._expert_email,
                 self._expert_id[:8],
             )
@@ -156,7 +156,7 @@ class Chat2GoAdapter(BasePlatformAdapter):
             self._mark_connected()
             return True
         except Exception as e:
-            logger.exception("Chat2GO.Ai connect 失败")
+            logger.exception("Chat2GO.ai connect 失败")
             return False
 
     async def disconnect(self) -> None:
@@ -179,7 +179,7 @@ class Chat2GoAdapter(BasePlatformAdapter):
             "expert_id", self._expert_id
         ).execute()
         self._rooms = {row["id"]: row for row in (r.data or [])}
-        logger.info("Chat2GO.Ai: loaded %d rooms", len(self._rooms))
+        logger.info("Chat2GO.ai: loaded %d rooms", len(self._rooms))
 
     async def _subscribe_realtime(self):
         self._channel = self._sb.realtime.channel("chat2go-hermes")
@@ -192,7 +192,7 @@ class Chat2GoAdapter(BasePlatformAdapter):
         try:
             await self._channel.subscribe()
         except Exception as e:
-            logger.warning("Chat2GO.Ai realtime subscribe 失败（用轮询兜底）: %s", e)
+            logger.warning("Chat2GO.ai realtime subscribe 失败（用轮询兜底）: %s", e)
 
     def _on_realtime_insert(self, payload):
         """同步回调：派到 async 任务。"""
@@ -258,7 +258,7 @@ class Chat2GoAdapter(BasePlatformAdapter):
                             asyncio.create_task(self._dispatch_inbound(m))
                             last_seen[rid] = ts
                 except Exception as e:
-                    logger.debug("Chat2GO.Ai poll error: %s", e)
+                    logger.debug("Chat2GO.ai poll error: %s", e)
         except asyncio.CancelledError:
             pass
 
@@ -311,11 +311,11 @@ class Chat2GoAdapter(BasePlatformAdapter):
                         if len(log) > self._IMG_LOG_MAX:
                             del log[: len(log) - self._IMG_LOG_MAX]
                         logger.info(
-                            "Chat2GO.Ai: cached image %s → %s", name, cached_path
+                            "Chat2GO.ai: cached image %s → %s", name, cached_path
                         )
                     except Exception as e:
                         logger.warning(
-                            "Chat2GO.Ai: cache image %s 失败：%s", name, e
+                            "Chat2GO.ai: cache image %s 失败：%s", name, e
                         )
                 else:
                     non_image_attachments.append((name, url))
@@ -428,10 +428,10 @@ class Chat2GoAdapter(BasePlatformAdapter):
                         "cost_source": "online",
                     }, returning="minimal").execute()
             except Exception as me:
-                logger.warning("Chat2GO.Ai model_usage stub 失败: %s", me)
+                logger.warning("Chat2GO.ai model_usage stub 失败: %s", me)
             return SendResult(success=True, message_id=new_id)
         except Exception as e:
-            logger.exception("Chat2GO.Ai send 失败")
+            logger.exception("Chat2GO.ai send 失败")
             return SendResult(success=False, error=str(e), retryable=True)
 
     async def send_typing(self, chat_id: str, metadata=None) -> None:

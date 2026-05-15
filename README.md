@@ -1,6 +1,6 @@
-# Chat2GO.Ai Agent
+# Chat2GO.ai Agent
 
-Chat2GO.Ai 的本地 AI Agent。大咖在自己电脑上跑这个进程，把 Claude / OpenAI / Gemini / DeepSeek / Qwen 等大模型接入 Chat2GO.Ai 调试室。
+Chat2GO.ai 的本地 AI Agent。大咖在自己电脑上跑这个进程，把 Claude / OpenAI / Gemini / DeepSeek / Qwen 等大模型接入 Chat2GO.ai 调试室。
 
 ## 架构
 

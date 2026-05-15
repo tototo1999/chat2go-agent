@@ -108,7 +108,7 @@ class HermesBrain:
         """把对话历史 + 附件 + 当前消息拼成单 query 字符串给 hermes。"""
         parts: list[str] = []
         industry = (ctx.room.get("industry") or "通用").strip()
-        parts.append(f"[Chat2GO.Ai 调试室 · 行业={industry}]")
+        parts.append(f"[Chat2GO.ai 调试室 · 行业={industry}]")
 
         if ctx.history:
             parts.append("\n【对话历史】")

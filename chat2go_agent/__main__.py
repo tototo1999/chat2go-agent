@@ -27,7 +27,7 @@ def main() -> None:
     load_dotenv()  # 优先级：env > yaml
     creds = load_credentials()
 
-    parser = argparse.ArgumentParser(prog="chat2go-agent", description="Chat2GO.Ai 本地 Agent")
+    parser = argparse.ArgumentParser(prog="chat2go-agent", description="Chat2GO.ai 本地 Agent")
     parser.add_argument("--email")
     parser.add_argument("--password")
     parser.add_argument(

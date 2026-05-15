@@ -72,7 +72,7 @@ hermes gateway run
 或用 setup wizard：
 ```bash
 hermes gateway setup
-# 选 17. Chat2GO.Ai（大咖营业窗口）
+# 选 17. Chat2GO.ai（大咖营业窗口）
 # 粘贴 token
 ```
 
@@ -85,8 +85,8 @@ hermes gateway status
 
 到 chat2go.cn 网页给某个房间发条消息，hermes 日志里应该有：
 ```
-[gateway] Chat2GO.Ai authenticated: lirui88888862@gmail.com (expert=fbb9ab4b)
-[gateway] Chat2GO.Ai: loaded 2 rooms
+[gateway] Chat2GO.ai authenticated: lirui88888862@gmail.com (expert=fbb9ab4b)
+[gateway] Chat2GO.ai: loaded 2 rooms
 [handle_message] platform=chat2go room=58e76f63 ...
 ```
 
