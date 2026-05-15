@@ -110,27 +110,29 @@ async def sync_memory(
 
         from .adapters import dispatch_call, Message
         print(f"[memory] 准备调 LLM 提取,model={model}")
-        try:
-            # 外层 asyncio.wait_for 硬超时:httpx 自己的 timeout 在 macOS DNS
-            # getaddrinfo C 层卡死时不一定能砍掉,这里再加一层保险。
-            result = await asyncio.wait_for(
-                dispatch_call(
-                    adapters=adapters,
-                    model=model,
-                    system="你是知识提取助手，只输出 JSON。",
-                    # 用 replace 而不是 .format:prompt 内含 JSON 示例 {"content": ...},
-                    # .format() 会把它当命名占位符,抛 KeyError: '"content"'。
-                    messages=[Message(role="user", content=_EXTRACT_PROMPT.replace("{dialogue}", dialogue))],
-                    max_tokens=512,
-                    timeout=10,
-                ),
-                timeout=15,
-            )
-        except asyncio.TimeoutError:
-            print(f"[memory] LLM 调用硬超时（>15s,跳过）")
+        # 起独立任务 + 用 wait() 而非 wait_for() —— wait_for 会 _cancel_and_wait
+        # 等内部任务完全 cancel,如果内部卡在 thread pool 的 getaddrinfo 上,
+        # _cancel_and_wait 自己也会卡(macOS Python 3.14 实测)。
+        # wait() 不 await cancel 完成,15s 一到就放手让 zombie 继续在背景跑。
+        llm_task = asyncio.create_task(dispatch_call(
+            adapters=adapters,
+            model=model,
+            system="你是知识提取助手，只输出 JSON。",
+            # 用 replace 而不是 .format:prompt 内含 JSON 示例 {"content": ...},
+            # .format() 会把它当命名占位符,抛 KeyError: '"content"'。
+            messages=[Message(role="user", content=_EXTRACT_PROMPT.replace("{dialogue}", dialogue))],
+            max_tokens=512,
+            timeout=10,
+        ))
+        done, pending = await asyncio.wait({llm_task}, timeout=15)
+        if not done:
+            print(f"[memory] LLM 调用硬超时（>15s,放弃,不阻塞主流程）")
+            llm_task.cancel()  # 发个 cancel 信号,但不 await,zombie 自己跑
             return
+        try:
+            result = llm_task.result()
         except Exception as e:
-            print(f"[memory] LLM 调用失败（忽略）：{e}")
+            print(f"[memory] LLM 调用失败（忽略）：{type(e).__name__}: {e}")
             return
 
         raw = (getattr(result, "text", "") or "").strip()
