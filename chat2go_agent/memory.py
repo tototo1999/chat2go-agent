@@ -1,4 +1,4 @@
-"""Memory prefetch（Phase A 只读，Phase B 加 sync_turn 写入）。
+"""Memory prefetch + sync_turn 写入（Phase B）。
 
 Memory 表 schema（在 supabase/migrations/ 里）：
   id          uuid pk
@@ -13,6 +13,9 @@ Memory 表 schema（在 supabase/migrations/ 里）：
 
 from __future__ import annotations
 
+import json
+import re
+
 
 async def prefetch_memory(
     sb,
@@ -23,8 +26,6 @@ async def prefetch_memory(
 ) -> str:
     """
     拉相关 memory 拼成给 LLM 看的 markdown 段落。
-    Phase A：直接拉最近 N 条。Phase B 升级为相关性检索。
-
     返回空串 = 没有 memory 或 memories 表不存在（不阻断主流程）。
     """
     try:
@@ -56,6 +57,108 @@ async def prefetch_memory(
 
         return "\n\n".join(sections)
     except Exception as e:
-        # memories 表可能还没创建，或者 RLS 拦了，不阻断主流程
         print(f"[memory] prefetch 失败（忽略）：{e}")
         return ""
+
+
+_EXTRACT_PROMPT = """你是一个知识提取助手。根据下面这段对话，判断大咖的发言是否包含值得长期记住的事实、规则或偏好。
+
+判断标准（满足任一即提取）：
+- 大咖纠正了 AI 的回答
+- 大咖补充了专业知识或行业规则
+- 大咖表达了明确的偏好（风格、用词、禁忌等）
+- 大咖提到了关于这个房间/用户的重要背景信息
+
+如果有值得记住的内容，以 JSON 数组输出，每条格式：
+{"content": "一句话描述这个事实", "scope": "room|expert", "tags": ["标签1", "标签2"]}
+
+scope 说明：
+- room：只对这个调试室有效（如某用户的具体情况）
+- expert：大咖个人的通用知识/偏好（跨房间有效）
+
+如果没有值得记住的内容，输出空数组：[]
+
+只输出 JSON，不要任何解释。
+
+---对话---
+{dialogue}
+"""
+
+
+async def sync_memory(
+    sb,
+    adapters: dict,
+    model: str,
+    room_id: str,
+    expert_id: str,
+    expert_message: str,
+    ai_message: str,
+    source_message_id: str | None = None,
+) -> None:
+    """
+    大咖发言后异步调用：提取记忆并写入 memories 表。
+    不阻断主流程，所有异常静默处理。
+    """
+    try:
+        if not expert_message.strip():
+            return
+
+        dialogue = f"大咖：{expert_message}\nAI：{ai_message}" if ai_message else f"大咖：{expert_message}"
+
+        from .adapters import dispatch_call, Message
+        result = await dispatch_call(
+            adapters=adapters,
+            model=model,
+            system="你是知识提取助手，只输出 JSON。",
+            messages=[Message(role="user", content=_EXTRACT_PROMPT.format(dialogue=dialogue))],
+            max_tokens=512,
+            timeout=30,
+        )
+
+        raw = result.text.strip()
+        # 从输出里提取 JSON 数组（有时模型会包一层 markdown ```）
+        m = re.search(r"\[.*\]", raw, re.DOTALL)
+        if not m:
+            return
+        items = json.loads(m.group())
+        if not items:
+            return
+
+        for item in items:
+            content = (item.get("content") or "").strip()
+            scope = item.get("scope", "room")
+            tags = item.get("tags") or []
+            if not content:
+                continue
+            if scope not in ("room", "expert"):
+                scope = "room"
+            scope_id = room_id if scope == "room" else expert_id
+
+            # 检查是否已有相似记忆（简单去重：content 完全相同则跳过）
+            existing = (
+                await sb.table("memories")
+                .select("id")
+                .eq("scope", scope)
+                .eq("scope_id", scope_id)
+                .eq("content", content)
+                .limit(1)
+                .execute()
+            )
+            if existing.data:
+                print(f"[memory] 跳过重复记忆: {content[:40]}…")
+                continue
+
+            row = {
+                "scope": scope,
+                "scope_id": scope_id,
+                "content": content,
+                "tags": tags,
+            }
+            if source_message_id:
+                row["source_message_id"] = source_message_id
+
+            await sb.table("memories").insert(row).execute()
+            print(f"[memory] 写入记忆 [{scope}]: {content[:60]}…")
+
+    except Exception as e:
+        print(f"[memory] sync_memory 失败（忽略）：{e}")

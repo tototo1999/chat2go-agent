@@ -1,5 +1,5 @@
 """
-Chat2GO · Agent Bridge (async)
+Chat2GO.Ai · Agent Bridge (async)
 ================================
 
 大咖在本地运行此进程。订阅 Supabase Realtime → 收到小白/大咖消息 →
@@ -49,9 +49,10 @@ from .config import (
     SUPABASE_URL,
     Credentials,
 )
-from .memory import prefetch_memory
+from .memory import prefetch_memory, sync_memory
 from .pricing import calculate_charge
 from .soul import load_skills, load_soul, select_skill_by_industry
+from .dspy_client import dspy_ask, dspy_extract, dspy_health
 
 
 def _looks_like_markdown(text: str) -> bool:
@@ -275,6 +276,17 @@ class Chat2GOBridge:
                 user_id=sender_user_id if sender_role == "user" else None,
             )
 
+            # 2b. DSPy 长期记忆增强（非阻塞，失败静默）
+            try:
+                dspy_user_id = sender_user_id or room_id
+                dspy_mem = await asyncio.get_event_loop().run_in_executor(
+                    None, dspy_ask, content, dspy_user_id
+                )
+                if dspy_mem:
+                    memory_ctx = f"{memory_ctx}\n\n[DSPy 长期记忆]\n{dspy_mem}".strip()
+            except Exception as _de:
+                print(f"[bridge][dspy] 记忆增强失败（忽略）: {_de}")
+
             # 3. 选 brain（房间 > yaml 默认 > auto）
             brain_name = resolve_brain_name(self.creds, room)
             brain = self.get_brain(brain_name)
@@ -314,7 +326,31 @@ class Chat2GOBridge:
                 }
             ).execute()
 
-            # 6. 写 model_usage（计费观测）
+            # 6. 大咖发言后异步提取记忆（不阻断主流程）
+            if sender_role == "expert":
+                asyncio.create_task(sync_memory(
+                    sb=self.sb,
+                    adapters=brain.llm_adapters if hasattr(brain, "llm_adapters") else (brain.adapters if hasattr(brain, "adapters") else {}),
+                    model=model,
+                    room_id=room_id,
+                    expert_id=self.expert_id,
+                    expert_message=content,
+                    ai_message=ai_text,
+                    source_message_id=msg_id,
+                ))
+
+            # 6b. DSPy 自动提取长期记忆（大咖 + 小白均覆盖）
+            try:
+                dspy_user_id = sender_user_id or room_id
+                asyncio.create_task(
+                    asyncio.get_event_loop().run_in_executor(
+                        None, dspy_extract, content, ai_text, dspy_user_id
+                    )
+                )
+            except Exception as _de:
+                print(f"[bridge][dspy] extract 任务创建失败（忽略）: {_de}")
+
+            # 7. 写 model_usage（计费观测）
             try:
                 ai_msg_id = (ai_resp.data or [{}])[0].get("id")
                 commission = float(
@@ -436,6 +472,8 @@ class Chat2GOBridge:
         print(f"[bridge] 已配 provider：{', '.join(sorted(self.creds.configured_providers())) or '(无)'}")
         print(f"[bridge] 已加载 skill：{', '.join(s.display_name for s in self.skills.values()) or '(无)'}")
         print(f"[bridge] SOUL.md：{'已加载' if self.soul else '未配置（用通用人格）'}")
+        dspy_ok = dspy_health()
+        print(f"[bridge] DSPy 记忆服务：{'✓ 在线 (localhost:7788)' if dspy_ok else '✗ 离线（记忆增强跳过）'}")
         print(f"[bridge] 监听中… 按 Ctrl+C 退出\n")
 
         channel = self.sb.realtime.channel("chat2go-bridge")
