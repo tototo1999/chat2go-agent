@@ -67,7 +67,7 @@ def main() -> None:
 
     p_connect = sub.add_parser("connect",
                                help="用 connection_key 接通 chat2go（写入 ~/.chat2go/credentials.yaml）")
-    p_connect.add_argument("key", help="c2g-key_xxx（在 chat2go.cn 网页生成）")
+    p_connect.add_argument("key", help="c2g-key_xxx（在 chat2go.ai 网页生成）")
 
     p_whoami = sub.add_parser("whoami", help="显示当前 agent 连接的大咖身份")
 

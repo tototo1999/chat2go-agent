@@ -1,6 +1,6 @@
 # Hermes 平台插件（chat2go）
 
-让 hermes 把 chat2go.cn 当成原生 IM 渠道（和 Discord/Telegram 平起平坐），
+让 hermes 把 chat2go.ai 当成原生 IM 渠道（和 Discord/Telegram 平起平坐），
 而不是通过 chat2go-agent 中转。
 
 ## 工作模式对比
@@ -8,7 +8,7 @@
 | 模式 | 说明 | 延迟 | 是否需要 chat2go-agent |
 |---|---|---|---|
 | chat2go-agent + hermes subprocess | 默认（chat2go-agent 当桥，每条消息 fork 一次 hermes） | ~30s | ✅ 必需 |
-| **hermes native plugin（本目录）** | hermes 直接订阅 chat2go.cn Realtime，常驻进程 | ~2-5s | ❌ 可不用 |
+| **hermes native plugin（本目录）** | hermes 直接订阅 chat2go.ai Realtime，常驻进程 | ~2-5s | ❌ 可不用 |
 
 ## 安装步骤
 
@@ -52,7 +52,7 @@ $HERMES/venv/bin/python -m pip install supabase
 
 ### 4. 配置 token
 
-到 chat2go.cn → 大咖设置 → Agent 连接密钥 → 生成新密钥（一次性显示）
+到 chat2go.ai → 大咖设置 → Agent 连接密钥 → 生成新密钥（一次性显示）
 
 ```bash
 export CHAT2GO_TOKEN=c2g-key_xxxxxxxx
@@ -83,7 +83,7 @@ hermes gateway status
 # 应显示 chat2go 在 Connected platforms 里
 ```
 
-到 chat2go.cn 网页给某个房间发条消息，hermes 日志里应该有：
+到 chat2go.ai 网页给某个房间发条消息，hermes 日志里应该有：
 ```
 [gateway] Chat2GO.ai authenticated: lirui88888862@gmail.com (expert=fbb9ab4b)
 [gateway] Chat2GO.ai: loaded 2 rooms

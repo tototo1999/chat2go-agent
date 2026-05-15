@@ -7,7 +7,7 @@ index 3a6ec244..4a309ca7 100644
          "documents."
      ),
 +    "chat2go": (
-+        "你在 Chat2GO 平台（chat2go.cn），这是一个 AI marketplace —— 行业大咖（expert）"
++        "你在 Chat2GO 平台（chat2go.ai），这是一个 AI marketplace —— 行业大咖（expert）"
 +        "在调试室里陪小白（user）把需求说清楚，并通过 AI 提供服务。\n"
 +        "三方在同一房间：小白、大咖、你（AI）。用中文交流，支持 Markdown。\n"
 +        "\n"
@@ -69,7 +69,7 @@ index 67ebf734..69864b9c 100644
                  name=os.getenv("QQBOT_HOME_CHANNEL_NAME") or os.getenv(qq_home_name_env, "Home"),
              )
  
-+    # Chat2GO （大咖营业窗口，token = chat2go.cn 网页生成的 c2g-key_xxx）
++    # Chat2GO （大咖营业窗口，token = chat2go.ai 网页生成的 c2g-key_xxx）
 +    chat2go_token = os.getenv("CHAT2GO_TOKEN")
 +    if chat2go_token:
 +        if Platform.CHAT2GO not in config.platforms:
@@ -134,14 +134,14 @@ index 8b360087..4846d239 100644
 +        "emoji": "🎯",
 +        "token_var": "CHAT2GO_TOKEN",
 +        "setup_instructions": [
-+            "1. 打开 https://chat2go.cn 注册一个大咖账号（选「行业大咖 · 入驻赚收益」）",
++            "1. 打开 https://chat2go.ai 注册一个大咖账号（选「行业大咖 · 入驻赚收益」）",
 +            "2. 进入引导页 → 点「生成我的连接密钥」→ 复制 c2g-key_xxx",
 +            "3. 粘贴到下面的 Connection Key",
-+            "4. hermes 启动后会自动连 chat2go.cn 监听小白消息",
++            "4. hermes 启动后会自动连 chat2go.ai 监听小白消息",
 +        ],
 +        "vars": [
 +            {"name": "CHAT2GO_TOKEN", "prompt": "Connection Key (c2g-key_xxx)", "password": False,
-+             "help": "在 chat2go.cn 大咖设置页 → Agent 连接密钥 → 生成新密钥（一次性显示）。"},
++             "help": "在 chat2go.ai 大咖设置页 → Agent 连接密钥 → 生成新密钥（一次性显示）。"},
 +        ],
 +    },
  ]

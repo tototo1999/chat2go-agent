@@ -1,14 +1,14 @@
 """
 Chat2GO.ai platform adapter for Hermes.
 
-让 hermes 把 chat2go.cn 当成一个原生 IM 渠道（和 Discord/Telegram 平起平坐）。
+让 hermes 把 chat2go.ai 当成一个原生 IM 渠道（和 Discord/Telegram 平起平坐）。
 
 启用方式：
-  export CHAT2GO_TOKEN=c2g-key_xxx   # chat2go.cn 网页生成
+  export CHAT2GO_TOKEN=c2g-key_xxx   # chat2go.ai 网页生成
   hermes gateway run
 
 工作流：
-  1. connect()：用 token 调 chat2go.cn /functions/v1/agent-auth/exchange
+  1. connect()：用 token 调 chat2go.ai /functions/v1/agent-auth/exchange
      拿到 magiclink token_hash → verify_otp 换 Supabase session
   2. 订阅 messages 表 Realtime，filter role != ai
   3. 收到 INSERT → handle_message(MessageEvent) 派给 hermes brain
@@ -39,7 +39,7 @@ from gateway.platforms.base import (
 
 logger = logging.getLogger(__name__)
 
-# 默认 chat2go.cn Supabase 端点（覆盖通过 CHAT2GO_SUPABASE_URL / _ANON_KEY 环境变量）
+# 默认 chat2go.ai Supabase 端点（覆盖通过 CHAT2GO_SUPABASE_URL / _ANON_KEY 环境变量）
 DEFAULT_SUPABASE_URL = "https://qjnagbzqhoansixqharb.supabase.co"
 DEFAULT_SUPABASE_ANON_KEY = (
     "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9"
@@ -435,7 +435,7 @@ class Chat2GoAdapter(BasePlatformAdapter):
             return SendResult(success=False, error=str(e), retryable=True)
 
     async def send_typing(self, chat_id: str, metadata=None) -> None:
-        # chat2go.cn 网页有 typing 指示器（前端 typingIndicator），
+        # chat2go.ai 网页有 typing 指示器（前端 typingIndicator），
         # 但底层是按"AI 在写消息"的状态推断，不需要显式发 typing 事件。
         # 留空即可。
         pass

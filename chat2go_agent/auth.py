@@ -1,7 +1,7 @@
 """Connection key → Supabase session 兑换。
 
 流程：
-  1. 大咖在 chat2go.cn 网页生成 c2g-key_xxx
+  1. 大咖在 chat2go.ai 网页生成 c2g-key_xxx
   2. agent 调 Edge Function /functions/v1/agent-auth/exchange，传 key
   3. Edge 用 service_role + admin.generateLink 生成 OTP，返回 token_hash
   4. agent 用 supabase.auth.verify_otp(token_hash, type='magiclink') 拿到 session
