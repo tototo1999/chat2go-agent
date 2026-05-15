@@ -106,59 +106,77 @@ async def sync_memory(
         dialogue = f"大咖：{expert_message}\nAI：{ai_message}" if ai_message else f"大咖：{expert_message}"
 
         from .adapters import dispatch_call, Message
-        result = await dispatch_call(
-            adapters=adapters,
-            model=model,
-            system="你是知识提取助手，只输出 JSON。",
-            messages=[Message(role="user", content=_EXTRACT_PROMPT.format(dialogue=dialogue))],
-            max_tokens=512,
-            timeout=30,
-        )
+        try:
+            result = await dispatch_call(
+                adapters=adapters,
+                model=model,
+                system="你是知识提取助手，只输出 JSON。",
+                messages=[Message(role="user", content=_EXTRACT_PROMPT.format(dialogue=dialogue))],
+                max_tokens=512,
+                timeout=30,
+            )
+        except Exception as e:
+            print(f"[memory] LLM 调用失败（忽略）：{e}")
+            return
 
-        raw = result.text.strip()
-        # 从输出里提取 JSON 数组（有时模型会包一层 markdown ```）
+        raw = (getattr(result, "text", "") or "").strip()
+        if not raw:
+            return
+        # 从输出里提取 JSON 数组（有时模型会包一层 markdown ```、或返回 {items:[...]}）
         m = re.search(r"\[.*\]", raw, re.DOTALL)
         if not m:
             return
-        items = json.loads(m.group())
-        if not items:
+        try:
+            items = json.loads(m.group())
+        except json.JSONDecodeError as e:
+            print(f"[memory] JSON 解析失败（跳过）：{e}; raw={raw[:200]!r}")
+            return
+
+        if not isinstance(items, list) or not items:
             return
 
         for item in items:
-            content = (item.get("content") or "").strip()
-            scope = item.get("scope", "room")
-            tags = item.get("tags") or []
-            if not content:
-                continue
-            if scope not in ("room", "expert"):
-                scope = "room"
-            scope_id = room_id if scope == "room" else expert_id
+            try:
+                if not isinstance(item, dict):
+                    print(f"[memory] 跳过非 dict 条目：{item!r}")
+                    continue
+                content = (item.get("content") or "").strip()
+                scope = item.get("scope", "room")
+                tags = item.get("tags") or []
+                if not content:
+                    continue
+                if scope not in ("room", "expert"):
+                    scope = "room"
+                scope_id = room_id if scope == "room" else expert_id
 
-            # 检查是否已有相似记忆（简单去重：content 完全相同则跳过）
-            existing = (
-                await sb.table("memories")
-                .select("id")
-                .eq("scope", scope)
-                .eq("scope_id", scope_id)
-                .eq("content", content)
-                .limit(1)
-                .execute()
-            )
-            if existing.data:
-                print(f"[memory] 跳过重复记忆: {content[:40]}…")
-                continue
+                # 简单去重：content 完全相同则跳过
+                existing = (
+                    await sb.table("memories")
+                    .select("id")
+                    .eq("scope", scope)
+                    .eq("scope_id", scope_id)
+                    .eq("content", content)
+                    .limit(1)
+                    .execute()
+                )
+                if existing.data:
+                    print(f"[memory] 跳过重复记忆: {content[:40]}…")
+                    continue
 
-            row = {
-                "scope": scope,
-                "scope_id": scope_id,
-                "content": content,
-                "tags": tags,
-            }
-            if source_message_id:
-                row["source_message_id"] = source_message_id
+                row = {
+                    "scope": scope,
+                    "scope_id": scope_id,
+                    "content": content,
+                    "tags": tags,
+                }
+                if source_message_id:
+                    row["source_message_id"] = source_message_id
 
-            await sb.table("memories").insert(row).execute()
-            print(f"[memory] 写入记忆 [{scope}]: {content[:60]}…")
+                await sb.table("memories").insert(row).execute()
+                print(f"[memory] 写入记忆 [{scope}]: {content[:60]}…")
+            except Exception as item_e:
+                # 单条失败不影响其他条目；打 raw item 便于诊断
+                print(f"[memory] 单条记忆处理失败（跳过）：{item_e}; item={item!r}")
 
     except Exception as e:
         print(f"[memory] sync_memory 失败（忽略）：{e}")
