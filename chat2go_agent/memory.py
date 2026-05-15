@@ -13,6 +13,7 @@ Memory 表 schema（在 supabase/migrations/ 里）：
 
 from __future__ import annotations
 
+import asyncio
 import json
 import re
 
@@ -109,16 +110,24 @@ async def sync_memory(
 
         from .adapters import dispatch_call, Message
         try:
-            result = await dispatch_call(
-                adapters=adapters,
-                model=model,
-                system="你是知识提取助手，只输出 JSON。",
-                # 用 replace 而不是 .format:prompt 内含 JSON 示例 {"content": ...},
-                # .format() 会把它当命名占位符,抛 KeyError: '"content"'。
-                messages=[Message(role="user", content=_EXTRACT_PROMPT.replace("{dialogue}", dialogue))],
-                max_tokens=512,
-                timeout=30,
+            # 外层 asyncio.wait_for 硬超时:httpx 自己的 timeout 在 macOS DNS
+            # getaddrinfo C 层卡死时不一定能砍掉,这里再加一层保险。
+            result = await asyncio.wait_for(
+                dispatch_call(
+                    adapters=adapters,
+                    model=model,
+                    system="你是知识提取助手，只输出 JSON。",
+                    # 用 replace 而不是 .format:prompt 内含 JSON 示例 {"content": ...},
+                    # .format() 会把它当命名占位符,抛 KeyError: '"content"'。
+                    messages=[Message(role="user", content=_EXTRACT_PROMPT.replace("{dialogue}", dialogue))],
+                    max_tokens=512,
+                    timeout=10,
+                ),
+                timeout=15,
             )
+        except asyncio.TimeoutError:
+            print(f"[memory] LLM 调用硬超时（>15s,跳过）")
+            return
         except Exception as e:
             print(f"[memory] LLM 调用失败（忽略）：{e}")
             return
