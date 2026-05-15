@@ -109,6 +109,7 @@ async def sync_memory(
         dialogue = f"大咖：{expert_message}\nAI：{ai_message}" if ai_message else f"大咖：{expert_message}"
 
         from .adapters import dispatch_call, Message
+        print(f"[memory] 准备调 LLM 提取,model={model}")
         try:
             # 外层 asyncio.wait_for 硬超时:httpx 自己的 timeout 在 macOS DNS
             # getaddrinfo C 层卡死时不一定能砍掉,这里再加一层保险。
