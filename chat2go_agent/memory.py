@@ -111,7 +111,9 @@ async def sync_memory(
                 adapters=adapters,
                 model=model,
                 system="你是知识提取助手，只输出 JSON。",
-                messages=[Message(role="user", content=_EXTRACT_PROMPT.format(dialogue=dialogue))],
+                # 用 replace 而不是 .format:prompt 内含 JSON 示例 {"content": ...},
+                # .format() 会把它当命名占位符,抛 KeyError: '"content"'。
+                messages=[Message(role="user", content=_EXTRACT_PROMPT.replace("{dialogue}", dialogue))],
                 max_tokens=512,
                 timeout=30,
             )
