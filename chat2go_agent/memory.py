@@ -122,13 +122,13 @@ async def sync_memory(
             # .format() 会把它当命名占位符,抛 KeyError: '"content"'。
             messages=[Message(role="user", content=_EXTRACT_PROMPT.replace("{dialogue}", dialogue))],
             max_tokens=2048,  # 512 太小,gemini 输出 JSON 还没闭合 ] 就被砍
-            timeout=10,
+            timeout=30,       # 内层 httpx ReadTimeout;给 Gemini 2.5 Pro 充足时间
         ))
-        print(f"[memory] 进入 await asyncio.wait(timeout=15)")
-        done, pending = await asyncio.wait({llm_task}, timeout=15)
+        print(f"[memory] 进入 await asyncio.wait(timeout=25)")
+        done, pending = await asyncio.wait({llm_task}, timeout=25)
         print(f"[memory] wait 返回:done={len(done)} pending={len(pending)} task_done={llm_task.done()}")
         if not done:
-            print(f"[memory] LLM 调用硬超时（>15s,放弃,不阻塞主流程）")
+            print(f"[memory] LLM 调用硬超时（>25s,放弃,不阻塞主流程）")
             llm_task.cancel()  # 发个 cancel 信号,但不 await,zombie 自己跑
             return
         try:
