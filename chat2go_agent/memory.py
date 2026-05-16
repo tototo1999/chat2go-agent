@@ -121,7 +121,7 @@ async def sync_memory(
             # 用 replace 而不是 .format:prompt 内含 JSON 示例 {"content": ...},
             # .format() 会把它当命名占位符,抛 KeyError: '"content"'。
             messages=[Message(role="user", content=_EXTRACT_PROMPT.replace("{dialogue}", dialogue))],
-            max_tokens=512,
+            max_tokens=2048,  # 512 太小,gemini 输出 JSON 还没闭合 ] 就被砍
             timeout=10,
         ))
         print(f"[memory] 进入 await asyncio.wait(timeout=15)")
@@ -144,12 +144,12 @@ async def sync_memory(
         # 从输出里提取 JSON 数组（有时模型会包一层 markdown ```、或返回 {items:[...]}）
         m = re.search(r"\[.*\]", raw, re.DOTALL)
         if not m:
-            print(f"[memory] LLM 返回里找不到 [...] 数组,跳过; raw={raw[:200]!r}")
+            print(f"[memory] LLM 返回里找不到 [...] 数组,跳过; raw={raw[:500]!r}")
             return
         try:
             items = json.loads(m.group())
         except json.JSONDecodeError as e:
-            print(f"[memory] JSON 解析失败（跳过）：{e}; raw={raw[:200]!r}")
+            print(f"[memory] JSON 解析失败（跳过）：{e}; raw={raw[:500]!r}")
             return
 
         if not isinstance(items, list):
